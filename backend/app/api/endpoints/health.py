@@ -12,5 +12,5 @@ async def check_health():
         success=True,
         message="System is healthy",
         data={"status": "healthy"},
-        request_id=req_id
+        request_id=req_id,
     )

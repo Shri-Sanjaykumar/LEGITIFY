@@ -1,8 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
-
 
 
 class UserRegister(BaseModel):
@@ -21,7 +19,9 @@ class UserRegister(BaseModel):
         if not any(c.isdigit() for c in v):
             raise ValueError("Password must contain at least one digit")
         if not any(c in "@$!%*?&" for c in v):
-            raise ValueError("Password must contain at least one special character (@$!%*?&)")
+            raise ValueError(
+                "Password must contain at least one special character (@$!%*?&)"
+            )
         return v
 
     @field_validator("role")

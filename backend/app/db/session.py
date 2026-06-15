@@ -2,13 +2,16 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from app.core.config import settings
 
+if not settings.DATABASE_URL:
+    raise ValueError("DATABASE_URL configuration is missing.")
+
 # Create async engine with pooling configured
 engine = create_async_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    future=True
+    future=True,
 )
 
 SessionLocal = async_sessionmaker(
@@ -16,7 +19,7 @@ SessionLocal = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
     autocommit=False,
-    autoflush=False
+    autoflush=False,
 )
 
 

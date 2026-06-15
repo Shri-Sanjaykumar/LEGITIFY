@@ -29,9 +29,9 @@ class JsonFormatter(logging.Formatter):
 
 def setup_logging() -> None:
     from app.middleware.logging import ContextFilter
-    
+
     root_logger = logging.getLogger()
-    
+
     # Avoid duplicate handlers
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
@@ -39,7 +39,7 @@ def setup_logging() -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     handler.addFilter(ContextFilter())
-    
+
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.INFO)
 

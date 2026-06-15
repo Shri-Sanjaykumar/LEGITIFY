@@ -1,5 +1,4 @@
 import logging
-from typing import AsyncGenerator, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
@@ -14,14 +13,11 @@ from app.models.user import User
 logger = logging.getLogger("app.dependencies")
 
 # oauth2_scheme points to the login endpoint
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login"
-)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
 
 
 async def get_current_user(
-    db: AsyncSession = Depends(get_db),
-    token: str = Depends(oauth2_scheme)
+    db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -30,28 +26,27 @@ async def get_current_user(
     )
     try:
         payload = decode_token(token)
-        user_id: str = payload.get("sub")
-        token_type: str = payload.get("type")
-        
+        user_id = payload.get("sub")
+        token_type = payload.get("type")
+
         if user_id is None or token_type != "access":
             raise credentials_exception
-            
+
     except JWTError:
         raise credentials_exception
-        
+
     result = await db.execute(
-        select(User).where(User.id == user_id, User.is_deleted == False)
+        select(User).where(User.id == user_id, User.is_deleted.is_(False))
     )
     user = result.scalars().first()
-    
+
     if user is None:
         raise credentials_exception
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Inactive user"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
-        
+
     return user
 
 
@@ -66,6 +61,6 @@ class RoleChecker:
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to access this resource"
+                detail="You do not have permission to access this resource",
             )
         return current_user

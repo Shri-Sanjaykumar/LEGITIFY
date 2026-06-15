@@ -20,7 +20,7 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
     "image/png",
-    "image/jpeg"
+    "image/jpeg",
 }
 
 MAGIC_BYTES = {
@@ -39,10 +39,10 @@ def sanitize_filename(filename: str) -> str:
     else:
         name = parts[0]
         ext = ""
-    
+
     # Path Traversal Protection: strictly keep only alphanumeric, dash, or underscore
     name = re.sub(r"[^\w\-_]", "_", name)
-    
+
     if ext:
         ext = re.sub(r"[^\w]", "", ext).lower()
         return f"{name}.{ext}"
@@ -56,15 +56,14 @@ def validate_file(filename: str, content: bytes, mime_type: str) -> None:
         logger.warning(f"File upload rejected: size {len(content)} exceeds limit")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size exceeds limit of {settings.MAX_FILE_SIZE_MB}MB"
+            detail=f"File size exceeds limit of {settings.MAX_FILE_SIZE_MB}MB",
         )
 
     # 2. Extension Check
     parts = filename.rsplit(".", 1)
     if len(parts) != 2:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File has no extension"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="File has no extension"
         )
     ext = parts[1].lower()
 
@@ -72,43 +71,45 @@ def validate_file(filename: str, content: bytes, mime_type: str) -> None:
         logger.warning(f"File upload rejected: extension .{ext} is forbidden")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Extension .{ext} is forbidden for security reasons"
+            detail=f"Extension .{ext} is forbidden for security reasons",
         )
 
     if ext not in ALLOWED_EXTENSIONS:
         logger.warning(f"File upload rejected: extension .{ext} not allowed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Extension .{ext} is not supported"
+            detail=f"Extension .{ext} is not supported",
         )
 
     # 3. MIME Type Validation
     normalized_mime = mime_type.lower()
     if normalized_mime in {"image/jpg", "image/pjpeg", "image/x-citrix-jpeg"}:
         normalized_mime = "image/jpeg"
-        
+
     if normalized_mime not in ALLOWED_MIME_TYPES:
         logger.warning(f"File upload rejected: MIME type '{mime_type}' not allowed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"MIME type '{mime_type}' is not allowed"
+            detail=f"MIME type '{mime_type}' is not allowed",
         )
 
     # 4. Magic Bytes Validation
     if ext in MAGIC_BYTES:
         signature = MAGIC_BYTES[ext]
         if not content.startswith(signature):
-            logger.warning(f"File upload rejected: magic bytes mismatch for extension .{ext}")
+            logger.warning(
+                f"File upload rejected: magic bytes mismatch for extension .{ext}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"File content does not match reported extension .{ext} (magic bytes mismatch)"
+                detail=f"File content does not match reported extension .{ext} (magic bytes mismatch)",
             )
     elif ext == "txt":
         if b"\x00" in content[:1024]:
             logger.warning("File upload rejected: txt file contains binary null bytes")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Text file contains binary data (null bytes)"
+                detail="Text file contains binary data (null bytes)",
             )
         try:
             content[:1024].decode("utf-8")
@@ -116,17 +117,17 @@ def validate_file(filename: str, content: bytes, mime_type: str) -> None:
             try:
                 content[:1024].decode("ascii")
             except UnicodeDecodeError:
-                logger.warning("File upload rejected: txt file is not valid UTF-8/ASCII")
+                logger.warning(
+                    "File upload rejected: txt file is not valid UTF-8/ASCII"
+                )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Text file contains invalid encoding (not UTF-8 or ASCII)"
+                    detail="Text file contains invalid encoding (not UTF-8 or ASCII)",
                 )
 
 
 async def check_user_quotas(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    new_file_size: int
+    db: AsyncSession, user_id: uuid.UUID, new_file_size: int
 ) -> None:
     """
     Storage Quota Checks Architecture
@@ -136,11 +137,11 @@ async def check_user_quotas(
     """
     # 1. Daily Upload Limit check (e.g., max 50 uploads in 24 hours)
     # 2. Total Storage Limit check (e.g., max 100MB cumulative upload size)
-    
+
     # Mock parameters for future implementation
     max_daily_scans = 50
-    max_storage_bytes = 100 * 1024 * 1024 # 100 MB
-    
+    max_storage_bytes = 100 * 1024 * 1024  # 100 MB
+
     logger.debug(
         f"Storage quota check completed for user {user_id}. "
         f"Limits: {max_daily_scans} daily, {max_storage_bytes} bytes max."
@@ -149,10 +150,7 @@ async def check_user_quotas(
     pass
 
 
-async def run_virus_scan(
-    file_id: uuid.UUID,
-    db: AsyncSession
-) -> None:
+async def run_virus_scan(file_id: uuid.UUID, db: AsyncSession) -> None:
     """
     Virus Scan Hook Architecture
     This placeholder architecture acts as a hook to invoke ClamAV or a third-party
@@ -160,21 +158,17 @@ async def run_virus_scan(
     """
     # 1. Trigger background task to scan target file path.
     # 2. Query scanner status and update virus_scan_status, virus_scan_date, and virus_scan_engine.
-    
+
     logger.info(f"Initialized virus scan hook for file: {file_id}. Status: PENDING")
     pass
 
 
 async def store_file(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    filename: str,
-    content: bytes,
-    mime_type: str
+    db: AsyncSession, user_id: uuid.UUID, filename: str, content: bytes, mime_type: str
 ) -> UploadedFile:
     # 1. Run validation rules
     validate_file(filename, content, mime_type)
-    
+
     # 2. Perform quota checks (designed, not enforced)
     await check_user_quotas(db, user_id, len(content))
 
@@ -197,14 +191,15 @@ async def store_file(
     # 3. Duplicate Detection / Deduplication
     result = await db.execute(
         select(UploadedFile).where(
-            UploadedFile.file_hash == file_hash, 
-            UploadedFile.is_deleted == False
+            UploadedFile.file_hash == file_hash, UploadedFile.is_deleted.is_(False)
         )
     )
     existing_file = result.scalars().first()
 
     if existing_file:
-        logger.info(f"Deduplication triggered: File hash {file_hash} already exists. Linking to original file ID: {existing_file.id}")
+        logger.info(
+            f"Deduplication triggered: File hash {file_hash} already exists. Linking to original file ID: {existing_file.id}"
+        )
         db_file = UploadedFile(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -221,7 +216,7 @@ async def store_file(
             virus_scan_engine=existing_file.virus_scan_engine,
             integrity_status="VERIFIED",
             sha256=file_hash,
-            upload_timestamp=datetime.now(timezone.utc)
+            upload_timestamp=datetime.now(timezone.utc),
         )
     else:
         # Create target directory
@@ -240,7 +235,7 @@ async def store_file(
             logger.error(f"Failed to write file to disk: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to store file on disk"
+                detail="Failed to store file on disk",
             )
 
         db_file = UploadedFile(
@@ -257,9 +252,9 @@ async def store_file(
             virus_scan_status="PENDING",
             integrity_status="VERIFIED",
             sha256=file_hash,
-            upload_timestamp=datetime.now(timezone.utc)
+            upload_timestamp=datetime.now(timezone.utc),
         )
-        
+
     db.add(db_file)
     await db.commit()
     await db.refresh(db_file)
@@ -267,5 +262,7 @@ async def store_file(
     # 4. Trigger virus scanning hook in the background
     await run_virus_scan(db_file.id, db)
 
-    logger.info(f"File uploaded successfully: {filename} -> {db_file.file_path} (ID: {db_file.id})")
+    logger.info(
+        f"File uploaded successfully: {filename} -> {db_file.file_path} (ID: {db_file.id})"
+    )
     return db_file

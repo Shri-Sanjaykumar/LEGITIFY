@@ -1,5 +1,5 @@
-from typing import Any, Dict, List, Optional, Union
-from pydantic import AnyHttpUrl, BeforeValidator, Field, field_validator
+from typing import Any, List, Optional
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,20 +10,20 @@ class Settings(BaseSettings):
 
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "LEGITIFY"
-    
+
     # Security
     SECRET_KEY: str = Field(default="SUPER_SECRET_KEY_CHANGE_IN_PRODUCTION_3dc5c0b")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    
+
     # PostgreSQL Configuration
     POSTGRES_SERVER: str = Field(default="localhost")
     POSTGRES_PORT: int = Field(default=5432)
     POSTGRES_USER: str = Field(default="postgres")
     POSTGRES_PASSWORD: str = Field(default="postgres")
     POSTGRES_DB: str = Field(default="legitify")
-    
+
     DATABASE_URL: Optional[str] = None
 
     @field_validator("DATABASE_URL", mode="before")
@@ -44,7 +44,9 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = Field(default=10)
 
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = Field(default=["http://localhost:3000", "http://localhost:3001"])
+    BACKEND_CORS_ORIGINS: List[str] = Field(
+        default=["http://localhost:3000", "http://localhost:3001"]
+    )
 
 
 settings = Settings()

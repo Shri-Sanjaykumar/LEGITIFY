@@ -48,4 +48,6 @@ venv/
 backend/storage/
 backend/app/storage/
 *.db
+.coverage
+
 

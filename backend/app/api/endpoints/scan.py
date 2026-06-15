@@ -2,7 +2,16 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    status,
+    UploadFile,
+    File,
+    Query,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -25,12 +34,14 @@ router = APIRouter()
 logger = logging.getLogger("app.api.scan")
 
 
-@router.post("/upload", response_model=StandardResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/upload", response_model=StandardResponse, status_code=status.HTTP_201_CREATED
+)
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     req_id = request_id_var.get()
     client_ip = request.client.host if request.client else "unknown"
@@ -41,7 +52,7 @@ async def upload_file(
         logger.error(f"Failed to read upload file: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not read uploaded file content"
+            detail="Could not read uploaded file content",
         )
 
     # Store file using service
@@ -50,7 +61,7 @@ async def upload_file(
         user_id=current_user.id,
         filename=file.filename or "unknown",
         content=content,
-        mime_type=file.content_type or "application/octet-stream"
+        mime_type=file.content_type or "application/octet-stream",
     )
 
     # Create audit log
@@ -59,7 +70,7 @@ async def upload_file(
         action="FILE_UPLOAD",
         ip_address=client_ip,
         user_id=current_user.id,
-        payload={"file_id": str(db_file.id), "filename": db_file.original_filename}
+        payload={"file_id": str(db_file.id), "filename": db_file.original_filename},
     )
 
     file_out = UploadedFileOut.model_validate(db_file)
@@ -67,7 +78,7 @@ async def upload_file(
         success=True,
         message="File uploaded successfully.",
         data=file_out,
-        request_id=req_id
+        request_id=req_id,
     )
 
 
@@ -75,38 +86,44 @@ async def upload_file(
 async def get_file(
     id: uuid.UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(UploadedFile).where(UploadedFile.id == id, UploadedFile.is_deleted == False)
+        select(UploadedFile).where(
+            UploadedFile.id == id, UploadedFile.is_deleted.is_(False)
+        )
     )
     db_file = result.scalars().first()
 
     if not db_file:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
         )
 
-    if db_file.user_id != current_user.id and current_user.role not in {"admin", "investigator"}:
+    if db_file.user_id != current_user.id and current_user.role not in {
+        "admin",
+        "investigator",
+    }:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this file"
+            detail="Not authorized to access this file",
         )
 
     return FileResponse(
         path=db_file.file_path,
         media_type=db_file.mime_type,
-        filename=db_file.original_filename
+        filename=db_file.original_filename,
     )
 
 
-@router.post("/create", response_model=StandardResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/create", response_model=StandardResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_scan(
     request: Request,
     scan_in: ScanCreate,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     req_id = request_id_var.get()
     client_ip = request.client.host if request.client else "unknown"
@@ -114,18 +131,22 @@ async def create_scan(
     # Validate file ownership if file_id is provided
     if scan_in.file_id:
         file_res = await db.execute(
-            select(UploadedFile).where(UploadedFile.id == scan_in.file_id, UploadedFile.is_deleted == False)
+            select(UploadedFile).where(
+                UploadedFile.id == scan_in.file_id, UploadedFile.is_deleted.is_(False)
+            )
         )
         db_file = file_res.scalars().first()
         if not db_file:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="File not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
             )
-        if db_file.user_id != current_user.id and current_user.role not in {"admin", "investigator"}:
+        if db_file.user_id != current_user.id and current_user.role not in {
+            "admin",
+            "investigator",
+        }:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to use this file for scans"
+                detail="Not authorized to use this file for scans",
             )
 
     # Initialize Scan
@@ -139,7 +160,7 @@ async def create_scan(
         scan_version="v1",
         scan_source=scan_in.scan_source,
         priority=scan_in.priority or "NORMAL",
-        retry_count=0
+        retry_count=0,
     )
 
     db.add(scan)
@@ -157,8 +178,8 @@ async def create_scan(
             "previous_status": None,
             "new_status": "PENDING",
             "user_id": str(scan.user_id),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
     scan_out = ScanOut.model_validate(scan)
@@ -166,7 +187,7 @@ async def create_scan(
         success=True,
         message="Scan record initialized.",
         data=scan_out,
-        request_id=req_id
+        request_id=req_id,
     )
 
 
@@ -182,13 +203,19 @@ async def get_scan_history(
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     req_id = request_id_var.get()
 
     # Form base query (Access Control: Users can only see their own scans)
-    query = select(Scan).where(Scan.user_id == current_user.id, Scan.is_deleted == False)
-    count_query = select(func.count()).select_from(Scan).where(Scan.user_id == current_user.id, Scan.is_deleted == False)
+    query = select(Scan).where(
+        Scan.user_id == current_user.id, Scan.is_deleted.is_(False)
+    )
+    count_query = (
+        select(func.count())
+        .select_from(Scan)
+        .where(Scan.user_id == current_user.id, Scan.is_deleted.is_(False))
+    )
 
     # Filtering
     if status:
@@ -209,7 +236,7 @@ async def get_scan_history(
     if sort not in allowed_sorts:
         sort = "created_at"
     sort_attr = getattr(Scan, sort)
-    
+
     if order.lower() == "asc":
         query = query.order_by(sort_attr.asc())
     else:
@@ -230,13 +257,8 @@ async def get_scan_history(
     return StandardResponse(
         success=True,
         message="Scan history retrieved.",
-        data={
-            "scans": scan_outs,
-            "total": total,
-            "page": page,
-            "limit": limit
-        },
-        request_id=req_id
+        data={"scans": scan_outs, "total": total, "page": page, "limit": limit},
+        request_id=req_id,
     )
 
 
@@ -245,7 +267,7 @@ async def patch_scan_status(
     request: Request,
     patch_in: ScanStatusPatch,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     req_id = request_id_var.get()
     client_ip = request.client.host if request.client else "unknown"
@@ -254,18 +276,17 @@ async def patch_scan_status(
     if current_user.role not in {"admin", "investigator"}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins or investigators can update scan statuses"
+            detail="Only admins or investigators can update scan statuses",
         )
 
     # Fetch scan
     scan_res = await db.execute(
-        select(Scan).where(Scan.id == patch_in.scan_id, Scan.is_deleted == False)
+        select(Scan).where(Scan.id == patch_in.scan_id, Scan.is_deleted.is_(False))
     )
     scan = scan_res.scalars().first()
     if not scan:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scan record not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Scan record not found"
         )
 
     prev_status = scan.status
@@ -306,18 +327,15 @@ async def patch_scan_status(
             "previous_status": prev_status,
             "new_status": new_status,
             "user_id": str(scan.user_id),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
     return StandardResponse(
         success=True,
         message="Scan status updated.",
-        data={
-            "id": scan.id,
-            "status": scan.status
-        },
-        request_id=req_id
+        data={"id": scan.id, "status": scan.status},
+        request_id=req_id,
     )
 
 
@@ -325,24 +343,26 @@ async def patch_scan_status(
 async def get_scan_details(
     id: uuid.UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Scan).where(Scan.id == id, Scan.is_deleted == False)
+        select(Scan).where(Scan.id == id, Scan.is_deleted.is_(False))
     )
     scan = result.scalars().first()
 
     if not scan:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scan record not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Scan record not found"
         )
 
     # Access Control: Owner or elevated roles only
-    if scan.user_id != current_user.id and current_user.role not in {"admin", "investigator"}:
+    if scan.user_id != current_user.id and current_user.role not in {
+        "admin",
+        "investigator",
+    }:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this scan record"
+            detail="Not authorized to view this scan record",
         )
 
     scan_out = ScanOut.model_validate(scan)
@@ -350,5 +370,5 @@ async def get_scan_details(
         success=True,
         message="Scan status retrieved.",
         data=scan_out,
-        request_id=request_id_var.get()
+        request_id=request_id_var.get(),
     )
