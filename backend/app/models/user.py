@@ -43,6 +43,7 @@ class User(Base):
     )
     scans = relationship("Scan", back_populates="user")
     uploads = relationship("UploadedFile", back_populates="user")
+    reports = relationship("Report", back_populates="user")
 
 
 class Session(Base):
