@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api/client';
-import type { Report, EvidenceItem } from '@/types';
+import type { Report, EvidenceItem, TrustScoreBreakdown } from '@/types';
 
 export function useReportDetails(id: string | null) {
   return useQuery({
@@ -44,5 +44,20 @@ export function useReportHistory(page = 1, limit = 10) {
       }
       return res.data as { reports: Report[]; total: number; page: number; limit: number };
     },
+  });
+}
+
+export function useReportBreakdown(id: string | null) {
+  return useQuery({
+    queryKey: ['report', 'breakdown', id],
+    queryFn: async () => {
+      if (!id || id === 'demo') return [];
+      const res = await apiFetch(`/report/${id}/breakdown`);
+      if (!res.success) {
+        throw new Error(res.message || 'Failed to fetch report breakdown');
+      }
+      return (res.data as { breakdown: TrustScoreBreakdown[] }).breakdown;
+    },
+    enabled: !!id && id !== 'demo',
   });
 }

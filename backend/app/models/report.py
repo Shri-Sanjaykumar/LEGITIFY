@@ -144,6 +144,11 @@ class Report(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    score_breakdowns = relationship(
+        "TrustScoreBreakdown",
+        back_populates="report",
+        cascade="all, delete-orphan",
+    )
 
     # Composite performance indexes
     __table_args__ = (
@@ -254,3 +259,33 @@ class ReportHistory(Base):
 
     # Relationships
     report = relationship("Report", back_populates="history")
+
+
+class TrustScoreBreakdown(Base):
+    __tablename__ = "trust_score_breakdowns"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    report_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    rule_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    rule_category: Mapped[str] = mapped_column(String(100), nullable=False)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    score_change: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    confidence: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "confidence IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_breakdown_confidence",
+        ),
+        nullable=False,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    report = relationship("Report", back_populates="score_breakdowns")

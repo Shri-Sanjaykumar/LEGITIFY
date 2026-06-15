@@ -11,9 +11,10 @@ from sqlalchemy import func, asc, desc
 from app.api.dependencies import RoleChecker
 from app.db.session import get_db
 from app.middleware.logging import request_id_var
-from app.models.report import EvidenceItem, Report, ReportHistory
+from app.models.report import EvidenceItem, Report, ReportHistory, TrustScoreBreakdown
 from app.models.scan import Scan
 from app.models.user import User
+from app.schemas.trust import TrustScoreBreakdownOut
 from app.schemas.base import StandardResponse
 from app.schemas.report import (
     EvidenceItemCreate,
@@ -385,6 +386,50 @@ async def get_evidence(
             "total": len(items),
             "evidence": [
                 EvidenceItemOut.model_validate(e).model_dump(mode="json") for e in items
+            ],
+        },
+        request_id=req_id,
+    )
+
+
+@router.get("/{report_id}/breakdown", response_model=StandardResponse)
+async def get_breakdown(
+    report_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_any_role),
+) -> StandardResponse:
+    """Retrieve the Trust Score audit breakdown rules for a report."""
+    req_id = request_id_var.get()
+
+    result = await db.execute(
+        select(Report).where(Report.id == report_id, Report.is_deleted.is_(False))
+    )
+    report = result.scalars().first()
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Report not found."
+        )
+
+    if report.user_id != current_user.id and current_user.role not in _PRIVILEGED_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized."
+        )
+
+    bd_result = await db.execute(
+        select(TrustScoreBreakdown).where(TrustScoreBreakdown.report_id == report_id)
+    )
+    items = bd_result.scalars().all()
+
+    return StandardResponse(
+        success=True,
+        message="Report score breakdown retrieved.",
+        data={
+            "report_id": str(report_id),
+            "total": len(items),
+            "breakdown": [
+                TrustScoreBreakdownOut.model_validate(b).model_dump(mode="json")
+                for b in items
             ],
         },
         request_id=req_id,

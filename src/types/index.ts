@@ -131,6 +131,19 @@ export interface EvidenceItem {
   created_at: string;
 }
 
+export interface TrustScoreBreakdown {
+  id: string;
+  report_id: string;
+  rule_name: string;
+  rule_category: string;
+  weight: number;
+  score_change: number;
+  confidence: "LOW" | "MEDIUM" | "HIGH" | string;
+  reason: string;
+  source: string;
+  created_at: string;
+}
+
 // ── Company ──
 export interface Company {
   id: string;

@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.errors import setup_exception_handlers
-from app.api.endpoints import health, auth, scan, report
+from app.api.endpoints import health, auth, scan, report, trust
 
 
 # 1. Setup structured logging
@@ -41,6 +41,7 @@ app.include_router(health.router, prefix=settings.API_V1_STR, tags=["System"])
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
 app.include_router(scan.router, prefix=f"{settings.API_V1_STR}/scan", tags=["Scans"])
 app.include_router(report.router, prefix=f"{settings.API_V1_STR}/report", tags=["Reports"])
+app.include_router(trust.router, prefix=f"{settings.API_V1_STR}/trust", tags=["Trust Engine"])
 
 
 

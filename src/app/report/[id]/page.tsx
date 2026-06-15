@@ -12,6 +12,7 @@ import Timeline from '@/components/report/Timeline';
 import ReportActions from '@/components/report/ReportActions';
 import AuthGuard from '@/components/shared/AuthGuard';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
+import ScoreBreakdown from '@/components/report/ScoreBreakdown';
 import { useReportDetails, useReportEvidence, useReportHistory } from '@/hooks/useReport';
 import type { TrustScore, RiskDimension } from '@/types';
 
@@ -296,6 +297,11 @@ function ReportContent() {
       {/* Row 4: Timeline */}
       <div className="w-full">
         <Timeline steps={investigationSteps} />
+      </div>
+
+      {/* Row 5: Score Breakdown Audit Logs */}
+      <div className="w-full">
+        <ScoreBreakdown reportId={resolvedReportId} />
       </div>
 
       {/* Row 5: Recommendations */}

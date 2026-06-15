@@ -10,7 +10,6 @@ import InputTypeSelector from '@/components/scan/InputTypeSelector';
 import FileUpload from '@/components/scan/FileUpload';
 import ScanProgress from '@/components/scan/ScanProgress';
 import AuthGuard from '@/components/shared/AuthGuard';
-import { useAuth } from '@/hooks/useAuth';
 import { useCreateScan, useUploadFile } from '@/hooks/useScans';
 import { apiFetch } from '@/lib/api/client';
 
@@ -20,7 +19,6 @@ type ScanType = 'pdf' | 'docx' | 'txt' | 'url' | 'linkedin' | 'email' | 'text';
 
 function ScanContent() {
   const router = useRouter();
-  const { user } = useAuth();
   const createScanMutation = useCreateScan();
   const uploadFileMutation = useUploadFile();
 
@@ -37,7 +35,7 @@ function ScanContent() {
   const handleStartScan = useCallback(async () => {
     if (!hasInput) return;
     setIsScanning(true);
-    setScanStep(1); // Uploading / Initializing
+    setScanStep(0); // Uploading
 
     try {
       let fileId: string | undefined = undefined;
@@ -48,7 +46,7 @@ function ScanContent() {
         fileId = uploadResult.id;
       }
 
-      setScanStep(2); // Extracting Text
+      setScanStep(1); // Extracting Text
 
       // 2. Map input details to backend Scan parameters
       const scanSourceMap: Record<ScanType, 'FILE' | 'EMAIL' | 'LINKEDIN' | 'URL' | 'TEXT'> = {
@@ -61,7 +59,7 @@ function ScanContent() {
         text: 'TEXT',
       };
 
-      setScanStep(3); // Analyzing Document
+      setScanStep(2); // Analyzing Document
 
       const scanParams = {
         file_id: fileId,
@@ -74,104 +72,31 @@ function ScanContent() {
       // 3. Create Scan Record in PostgreSQL
       const scanResult = await createScanMutation.mutateAsync(scanParams);
 
-      setScanStep(4); // Checking Domain & Company
+      setScanStep(3); // Checking Domain
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-      // Admin role can patch status directly
-      const isAdmin = user?.role === 'admin' || user?.role === 'investigator';
-      if (isAdmin) {
-        try {
-          await apiFetch('/scan/status', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scan_id: scanResult.id, status: 'PROCESSING' }),
-          });
-        } catch (e) {
-          console.warn('Failed to patch scan status to PROCESSING:', e);
-        }
-      }
+      setScanStep(4); // Verifying Company
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
       setScanStep(5); // Checking Reputation
-
-      // 4. Generate the corresponding Report linked to the Scan
-      const reportRes = await apiFetch('/report/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scan_id: scanResult.id,
-          trust_score: 74.5,
-          risk_score: 25.5,
-          confidence_score: 92,
-          risk_level: 'medium',
-          summary: `AI analysis completed for this ${selectedType} scan. The metadata and content headers demonstrate valid integrity properties. Minor inconsistencies observed in public registration details.`,
-          recommendation: 'Confirm recruiter profiles on LinkedIn and verify email headers match the official domain.',
-          generated_by: 'AI',
-        }),
-      });
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
       setScanStep(6); // Generating Report
 
-      if (reportRes.success && reportRes.data) {
-        const reportId = (reportRes.data as { id: string }).id;
+      // 4. Trigger the real trust engine analysis on the backend
+      const analyzeRes = await apiFetch('/trust/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scan_id: scanResult.id }),
+      });
 
-        // If admin, complete both scan and report, and add real evidence items
-        if (isAdmin) {
-          try {
-            // Complete Scan
-            await apiFetch('/scan/status', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ scan_id: scanResult.id, status: 'COMPLETED' }),
-            });
-
-            // Complete Report
-            await apiFetch('/report/status', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ report_id: reportId, status: 'COMPLETED' }),
-            });
-
-            // Add Evidence Items
-            await apiFetch(`/report/${reportId}/evidence`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                evidence_type: 'DOMAIN',
-                title: 'Sender Domain Integrity',
-                description: 'Email sender address domain matches the official company web domain.',
-                severity: 'INFO',
-                confidence: 0.98,
-                source: 'SPF/DKIM Records',
-              }),
-            });
-
-            await apiFetch(`/report/${reportId}/evidence`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                evidence_type: 'COMPANY',
-                title: 'Registration Verification',
-                description: 'Corporate registry record search returned active status, matching name and location.',
-                severity: 'LOW',
-                confidence: 0.95,
-                source: 'Ministry of Corporate Affairs',
-              }),
-            });
-          } catch (e) {
-            console.error('Failed admin workflow completion:', e);
-          }
-        }
-
-        // Advance to success view and redirect
+      if (analyzeRes.success) {
         setScanStep(7); // Complete
         setTimeout(() => {
           router.push(`/report/${scanResult.id}`);
         }, 1200);
       } else {
-        // Fallback redirection to scan record itself if report creation failed
-        setScanStep(7);
-        setTimeout(() => {
-          router.push(`/report/${scanResult.id}`);
-        }, 1200);
+        throw new Error(analyzeRes.message || 'Trust analysis failed');
       }
     } catch (error) {
       console.error('Verification workflow failed:', error);
@@ -179,7 +104,7 @@ function ScanContent() {
       setScanStep(0);
       alert('Verification failed. Please check the backend service status.');
     }
-  }, [hasInput, file, selectedType, isFileSelected, inputValue, createScanMutation, uploadFileMutation, router, user]);
+  }, [hasInput, file, selectedType, isFileSelected, inputValue, createScanMutation, uploadFileMutation, router]);
 
   const handleTypeChange = (type: string) => {
     setSelectedType(type as ScanType);
