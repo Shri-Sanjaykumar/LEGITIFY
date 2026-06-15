@@ -10,7 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+
 import { mockDashboardStats } from '@/lib/mock-data';
 
 interface StatCard {

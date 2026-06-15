@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Linkedin } from '@/components/shared/BrandIcons';
 import { cn } from '@/lib/utils';
-import { getRelativeTime, truncate, getTrustColor } from '@/lib/utils';
+import { getRelativeTime, truncate } from '@/lib/utils';
 import { mockRecentScans } from '@/lib/mock-data';
 import type { Scan, ScanInputType } from '@/types';
 

@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Calendar, FileText, CheckCircle, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle, ShieldAlert } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import TrustGauge from '@/components/report/TrustGauge';
 import RiskRadar from '@/components/report/RiskRadar';

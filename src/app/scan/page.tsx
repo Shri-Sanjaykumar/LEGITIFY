@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Shield, Globe, Mail, Type, FileText, ChevronRight } from 'lucide-react';
+import { Shield, Globe, Mail, Type, ChevronRight } from 'lucide-react';
 import { Linkedin } from '@/components/shared/BrandIcons';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import InputTypeSelector from '@/components/scan/InputTypeSelector';

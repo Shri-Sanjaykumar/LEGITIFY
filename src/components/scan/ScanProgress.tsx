@@ -135,7 +135,6 @@ export default function ScanProgress({ isScanning, currentStep }: ScanProgressPr
           {SCAN_STEPS.map((step, index) => {
             const isCompleted = index < currentStep;
             const isActive = index === currentStep && !allComplete;
-            const isPending = index > currentStep;
             const StepIcon = step.icon;
 
             return (

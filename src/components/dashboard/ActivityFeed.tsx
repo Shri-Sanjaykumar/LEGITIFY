@@ -13,7 +13,7 @@ import {
 import { cn } from '@/lib/utils';
 import { mockActivityFeed } from '@/lib/mock-data';
 import { getRelativeTime } from '@/lib/utils';
-import type { ActivityItem } from '@/types';
+
 
 const typeConfigs = {
   scan: {
@@ -83,7 +83,7 @@ export default function ActivityFeed() {
           className="relative pl-6 border-l border-[var(--border-primary)] space-y-6"
         >
           <AnimatePresence initial={false}>
-            {activities.slice(0, visibleItems).map((item, index) => {
+            {activities.slice(0, visibleItems).map((item) => {
               const config = typeConfigs[item.type] || typeConfigs.system;
               const Icon = config.icon;
 

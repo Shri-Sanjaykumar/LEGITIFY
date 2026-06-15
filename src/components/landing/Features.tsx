@@ -9,7 +9,7 @@ import {
   MessageSquare,
   Shield,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+
 import { FEATURES } from "@/lib/constants";
 
 const iconMap: Record<string, React.ElementType> = {

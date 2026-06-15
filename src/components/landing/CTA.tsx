@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, Shield } from "lucide-react";
-import { cn } from "@/lib/utils";
+
 
 const floatingShields = [
   { top: "10%", left: "8%", size: 28, delay: 0, duration: 7 },

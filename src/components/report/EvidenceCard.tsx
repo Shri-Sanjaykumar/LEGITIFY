@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, AlertTriangle, AlertCircle, Info, XCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+
 import type { RiskDimension, Evidence } from '@/types';
 
 interface EvidenceCardProps {

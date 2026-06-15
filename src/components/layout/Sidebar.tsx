@@ -81,11 +81,6 @@ export default function Sidebar({ activePath }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 px-3 space-y-1">
         {navItems.map((item) => {
-          const isActive = activePath === item.href && item.label === 'Dashboard'
-            ? true
-            : activePath === item.href && item.label !== 'Dashboard'
-            ? item.label === 'New Scan'
-            : false;
 
           const isCurrentPage =
             item.label === 'Dashboard'

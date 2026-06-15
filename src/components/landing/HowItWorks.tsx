@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Upload, Brain, FileCheck } from "lucide-react";
-import { cn } from "@/lib/utils";
+
 import { HOW_IT_WORKS_STEPS } from "@/lib/constants";
 
 const iconMap: Record<string, React.ElementType> = {
