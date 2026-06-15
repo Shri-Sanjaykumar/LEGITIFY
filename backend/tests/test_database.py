@@ -1,11 +1,10 @@
 import pytest
 from sqlalchemy.sql import text
-from app.db.session import SessionLocal
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.asyncio
-async def test_database_connection():
-    async with SessionLocal() as session:
-        result = await session.execute(text("SELECT 1"))
-        val = result.scalar()
-        assert val == 1
+async def test_database_connection(db: AsyncSession):
+    result = await db.execute(text("SELECT 1"))
+    val = result.scalar()
+    assert val == 1
