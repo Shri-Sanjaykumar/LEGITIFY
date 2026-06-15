@@ -23,6 +23,7 @@ export const mockRecentScans: Scan[] = [
   {
     id: "scan-001",
     userId: "user-1",
+    user_id: "user-1",
     input: {
       id: "input-1",
       type: "pdf",
@@ -34,10 +35,12 @@ export const mockRecentScans: Scan[] = [
     trustScore: 87,
     createdAt: new Date(Date.now() - 1000 * 60 * 15),
     completedAt: new Date(Date.now() - 1000 * 60 * 14),
+    created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
   },
   {
     id: "scan-002",
     userId: "user-1",
+    user_id: "user-1",
     input: {
       id: "input-2",
       type: "url",
@@ -48,10 +51,12 @@ export const mockRecentScans: Scan[] = [
     trustScore: 18,
     createdAt: new Date(Date.now() - 1000 * 60 * 45),
     completedAt: new Date(Date.now() - 1000 * 60 * 43),
+    created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
   },
   {
     id: "scan-003",
     userId: "user-1",
+    user_id: "user-1",
     input: {
       id: "input-3",
       type: "linkedin",
@@ -62,10 +67,12 @@ export const mockRecentScans: Scan[] = [
     trustScore: 92,
     createdAt: new Date(Date.now() - 1000 * 60 * 120),
     completedAt: new Date(Date.now() - 1000 * 60 * 118),
+    created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
   },
   {
     id: "scan-004",
     userId: "user-1",
+    user_id: "user-1",
     input: {
       id: "input-4",
       type: "email",
@@ -75,10 +82,12 @@ export const mockRecentScans: Scan[] = [
     trustScore: 42,
     createdAt: new Date(Date.now() - 1000 * 60 * 240),
     completedAt: new Date(Date.now() - 1000 * 60 * 238),
+    created_at: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
   },
   {
     id: "scan-005",
     userId: "user-1",
+    user_id: "user-1",
     input: {
       id: "input-5",
       type: "pdf",
@@ -88,6 +97,7 @@ export const mockRecentScans: Scan[] = [
     },
     status: "processing",
     createdAt: new Date(Date.now() - 1000 * 60 * 2),
+    created_at: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
   },
 ];
 
@@ -331,9 +341,12 @@ export const mockActivityFeed: ActivityItem[] = [
 // ── Sample Report ──
 export const mockReport: Report = {
   id: "report-001",
-  scanId: "scan-002",
-  trustScore: mockTrustScore,
-  aiSummary: `## Investigation Summary
+  scan_id: "scan-002",
+  trust_score: 23,
+  risk_score: 77,
+  confidence_score: 94,
+  risk_level: "high",
+  summary: `## Investigation Summary
 
 This document has been flagged as **HIGH RISK** with a trust score of **23/100**.
 
@@ -352,16 +365,15 @@ This document has been flagged as **HIGH RISK** with a trust score of **23/100**
 ### Recommendation
 
 **Do not share personal information, documents, or make any payments.** This appears to be a sophisticated recruitment scam. Report this to your university placement cell and local cyber crime authorities.`,
-  investigationSteps: mockInvestigationSteps,
-  recommendations: [
-    "Do not share any personal documents (Aadhaar, PAN, bank details) with this entity",
-    "Do not make any payments or deposits as requested in the offer letter",
-    "Report this to your university's placement cell immediately",
-    "File a complaint with the Cyber Crime Portal (cybercrime.gov.in)",
-    "Block the recruiter's email and phone number",
-    "Warn other students in your network about this fraudulent company",
-  ],
-  createdAt: new Date(),
+  recommendation: `Do not share any personal documents (Aadhaar, PAN, bank details) with this entity
+Do not make any payments or deposits as requested in the offer letter
+Report this to your university's placement cell immediately
+File a complaint with the Cyber Crime Portal (cybercrime.gov.in)
+Block the recruiter's email and phone number
+Warn other students in your network about this fraudulent company`,
+  report_version: "v1",
+  report_status: "COMPLETED",
+  created_at: new Date().toISOString(),
 };
 
 // ── Sample Company ──

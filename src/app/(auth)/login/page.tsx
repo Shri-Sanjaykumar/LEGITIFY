@@ -5,23 +5,35 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Shield, Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
     setIsLoading(true);
-    // Simulate successful login
-    setTimeout(() => {
+    setError(null);
+
+    try {
+      const res = await login(email, password);
+      if (res.success) {
+        router.push('/dashboard');
+      } else {
+        setError(res.message);
+      }
+    } catch {
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
       setIsLoading(false);
-      router.push('/dashboard');
-    }, 1500);
+    }
   };
 
   return (
@@ -48,6 +60,12 @@ export default function LoginPage() {
             Log in to verify your opportunities
           </p>
         </div>
+
+        {error && (
+          <div className="p-3 mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500 text-center font-medium">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleLogin} className="space-y-5">
           {/* Email input */}
@@ -142,12 +160,22 @@ export default function LoginPage() {
         <motion.button
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
-          onClick={() => {
+          onClick={async () => {
             setIsLoading(true);
-            setTimeout(() => {
+            setError(null);
+            try {
+              // Mock google sign in for demo using test account
+              const res = await login('admin@legitify.io', 'Admin@1234');
+              if (res.success) {
+                router.push('/dashboard');
+              } else {
+                setError(res.message);
+              }
+            } catch {
+              setError('Failed to authenticate with Google.');
+            } finally {
               setIsLoading(false);
-              router.push('/dashboard');
-            }, 1000);
+            }
           }}
           className="w-full py-3 rounded-xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-secondary)] text-sm font-semibold text-[var(--text-primary)] flex items-center justify-center gap-2 cursor-pointer select-none transition-all"
         >

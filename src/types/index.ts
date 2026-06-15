@@ -42,16 +42,22 @@ export interface ScanInput {
   fileSize?: number;
   url?: string;
 }
-
 export interface Scan {
   id: string;
-  userId: string;
-  input: ScanInput;
-  status: ScanStatus;
+  user_id: string;
+  userId?: string;
+  file_id?: string;
+  input?: ScanInput;
+  scan_type?: string;
+  raw_input_text?: string;
+  status: ScanStatus | string;
   trustScore?: number;
+  trust_score?: number;
   report?: Report;
-  createdAt: Date;
+  created_at: string;
+  createdAt?: Date;
   completedAt?: Date;
+  completed_at?: string;
 }
 
 // ── Report & Trust Score ──
@@ -97,15 +103,32 @@ export interface InvestigationStep {
   duration: number;
   timestamp: Date;
 }
-
 export interface Report {
   id: string;
-  scanId: string;
-  trustScore: TrustScore;
-  aiSummary: string;
-  investigationSteps: InvestigationStep[];
-  recommendations: string[];
-  createdAt: Date;
+  scan_id: string;
+  trust_score: number;
+  risk_score: number;
+  confidence_score: number;
+  risk_level: string;
+  summary: string;
+  recommendation?: string;
+  report_version: string;
+  report_status: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface EvidenceItem {
+  id: string;
+  report_id: string;
+  evidence_type: string;
+  title: string;
+  description: string;
+  severity: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | string;
+  confidence: number;
+  source: string;
+  source_reference?: string;
+  created_at: string;
 }
 
 // ── Company ──

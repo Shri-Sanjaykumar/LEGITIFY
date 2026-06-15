@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Providers from "@/components/shared/Providers";
 
 export const metadata: Metadata = {
   title: "LEGITIFY — Verify Before You Trust",
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="font-sans antialiased min-h-screen bg-[#06060b] text-[#f1f5f9]">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

@@ -6,11 +6,13 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Shield, Eye, EyeOff, Mail, Lock, User, UserCheck, Users, Briefcase, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 type Role = 'student' | 'placement' | 'recruiter';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { register } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,7 +22,7 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -30,11 +32,20 @@ export default function RegisterPage() {
     }
 
     setIsLoading(true);
-    // Simulate successful registration
-    setTimeout(() => {
+
+    try {
+      const backendRole = role === 'placement' ? 'faculty' : role;
+      const res = await register(email, password, name, backendRole);
+      if (res.success) {
+        router.push('/dashboard');
+      } else {
+        setError(res.message);
+      }
+    } catch {
+      setError('An unexpected error occurred during registration.');
+    } finally {
       setIsLoading(false);
-      router.push('/dashboard');
-    }, 1500);
+    }
   };
 
   return (
@@ -217,12 +228,26 @@ export default function RegisterPage() {
         <motion.button
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
-          onClick={() => {
+          onClick={async () => {
             setIsLoading(true);
-            setTimeout(() => {
+            setError(null);
+            try {
+              const res = await register(
+                `google_user_${Math.floor(Math.random() * 10000)}@legitify.io`,
+                'GoogleUser@1234',
+                'Google User',
+                'student'
+              );
+              if (res.success) {
+                router.push('/dashboard');
+              } else {
+                setError(res.message);
+              }
+            } catch {
+              setError('Failed to authenticate with Google.');
+            } finally {
               setIsLoading(false);
-              router.push('/dashboard');
-            }, 1000);
+            }
           }}
           className="w-full py-3 rounded-xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-secondary)] text-sm font-semibold text-[var(--text-primary)] flex items-center justify-center gap-2 cursor-pointer select-none transition-all"
         >
