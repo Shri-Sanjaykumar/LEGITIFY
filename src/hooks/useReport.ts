@@ -28,7 +28,7 @@ export function useReportEvidence(id: string | null) {
       if (!res.success) {
         throw new Error(res.message || 'Failed to fetch report evidence');
       }
-      return (res.data as any).evidence as EvidenceItem[];
+      return (res.data as { evidence: EvidenceItem[] }).evidence;
     },
     enabled: !!id && id !== 'demo',
   });

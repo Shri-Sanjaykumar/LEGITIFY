@@ -50,4 +50,8 @@ backend/app/storage/
 *.db
 .coverage
 
+# Playwright E2E
+/test-results/
+/playwright-report/
+
 

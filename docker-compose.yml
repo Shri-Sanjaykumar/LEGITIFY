@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: legitify-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secure_password_3dc5c0b
+      POSTGRES_DB: legitify
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d legitify"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: legitify-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_SERVER=db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_secure_password_3dc5c0b
+      - POSTGRES_DB=legitify
+      - SECRET_KEY=SUPER_SECRET_KEY_CHANGE_IN_PRODUCTION_3dc5c0b
+      - UPLOAD_DIR=storage/uploads
+      - BACKEND_CORS_ORIGINS=["http://localhost:3000", "http://localhost:3001"]
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - upload_storage:/workspace/storage/uploads
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: legitify-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - NODE_ENV=production
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  upload_storage:

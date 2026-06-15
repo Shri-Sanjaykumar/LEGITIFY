@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '@/hooks/useAuth';
 import {
   Shield,
   LayoutDashboard,
@@ -36,6 +37,13 @@ export default function DashboardLayout({ children, activePath }: DashboardLayou
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   const currentPath = activePath || pathname;
+  const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleSignOut = async () => {
+    await logout();
+    router.push('/login');
+  };
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--bg-primary)' }}>
@@ -83,6 +91,7 @@ export default function DashboardLayout({ children, activePath }: DashboardLayou
 
         <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--border-primary)' }}>
           <button
+            onClick={handleSignOut}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium w-full transition-colors hover:bg-[var(--bg-elevated)]"
             style={{ color: 'var(--text-secondary)' }}
           >
@@ -147,6 +156,20 @@ export default function DashboardLayout({ children, activePath }: DashboardLayou
                   );
                 })}
               </nav>
+
+              <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: 'var(--border-primary)' }}>
+                <button
+                  onClick={() => {
+                    setSidebarOpen(false);
+                    handleSignOut();
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium w-full transition-colors hover:bg-[var(--bg-elevated)]"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <LogOut size={18} />
+                  Sign Out
+                </button>
+              </div>
             </motion.aside>
           </>
         )}

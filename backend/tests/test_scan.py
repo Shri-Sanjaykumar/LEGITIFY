@@ -58,10 +58,10 @@ async def test_create_scan_success(client: AsyncClient, db: AsyncSession):
     audit_res = await db.execute(
         select(AuditLog).where(AuditLog.action == "SCAN_CREATED")
     )
-    audit = audit_res.scalars().first()
-    assert audit is not None
-    assert audit.payload["scan_id"] == str(scan_id)
-    assert audit.payload["new_status"] == "PENDING"
+    audits = audit_res.scalars().all()
+    matching_audit = next((a for a in audits if a.payload.get("scan_id") == str(scan_id)), None)
+    assert matching_audit is not None
+    assert matching_audit.payload["new_status"] == "PENDING"
 
 
 @pytest.mark.asyncio
