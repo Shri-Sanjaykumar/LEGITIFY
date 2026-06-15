@@ -289,3 +289,155 @@ class TrustScoreBreakdown(Base):
     )
 
     report = relationship("Report", back_populates="score_breakdowns")
+
+
+class CompanyVerification(Base):
+    __tablename__ = "company_verifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    website: Mapped[str] = mapped_column(String(255), nullable=False)
+    company_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verification_score: Mapped[float] = mapped_column(
+        Float,
+        CheckConstraint(
+            "verification_score >= 0.0 AND verification_score <= 100.0",
+            name="check_verification_score_range",
+        ),
+        default=0.0,
+    )
+    verification_status: Mapped[str] = mapped_column(
+        String(50),
+        CheckConstraint(
+            "verification_status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')",
+            name="check_verification_status",
+        ),
+        default="PENDING",
+    )
+    verification_level: Mapped[str] = mapped_column(
+        String(50),
+        CheckConstraint(
+            "verification_level IN ('VERIFIED', 'LIKELY_VERIFIED', 'PARTIALLY_VERIFIED', 'SUSPICIOUS', 'UNVERIFIED')",
+            name="check_verification_level",
+        ),
+        default="UNVERIFIED",
+    )
+    verification_confidence: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "verification_confidence IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_verification_confidence",
+        ),
+        default="LOW",
+    )
+    verification_version: Mapped[str] = mapped_column(String(20), default="v1")
+    verification_source: Mapped[str] = mapped_column(String(100), default="API")
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_verification_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    verification_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    breakdowns = relationship(
+        "CompanyVerificationBreakdown",
+        back_populates="verification",
+        cascade="all, delete-orphan",
+    )
+    evidence = relationship(
+        "CompanyVerificationEvidence",
+        back_populates="verification",
+        cascade="all, delete-orphan",
+    )
+
+
+class CompanyVerificationBreakdown(Base):
+    __tablename__ = "company_verification_breakdowns"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    verification_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("company_verifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rule_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    score_change: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "confidence IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_company_breakdown_confidence",
+        ),
+        nullable=False,
+    )
+    source_reliability: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "source_reliability IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_company_breakdown_source_reliability",
+        ),
+        nullable=False,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    verification = relationship("CompanyVerification", back_populates="breakdowns")
+
+
+class CompanyVerificationEvidence(Base):
+    __tablename__ = "company_verification_evidence"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    verification_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("company_verifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    evidence_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    severity: Mapped[str] = mapped_column(
+        String(50),
+        CheckConstraint(
+            "severity IN ('INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL')",
+            name="check_company_evidence_severity",
+        ),
+        nullable=False,
+    )
+    confidence: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "confidence IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_company_evidence_confidence",
+        ),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    verification = relationship("CompanyVerification", back_populates="evidence")

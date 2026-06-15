@@ -10,5 +10,8 @@ from app.models.report import (
     EvidenceItem,
     ReportHistory,
     TrustScoreBreakdown,
+    CompanyVerification,
+    CompanyVerificationBreakdown,
+    CompanyVerificationEvidence,
 )  # noqa
 from app.models.audit import AuditLog  # noqa

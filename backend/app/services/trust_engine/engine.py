@@ -7,7 +7,14 @@ from sqlalchemy import delete
 
 from app.models.scan import Scan
 from app.models.file import UploadedFile
-from app.models.report import Report, EvidenceItem, TrustScoreBreakdown, ReportHistory
+from app.models.report import (
+    Report,
+    EvidenceItem,
+    TrustScoreBreakdown,
+    ReportHistory,
+    CompanyVerification,
+    CompanyVerificationBreakdown,
+)
 from app.services.audit import create_audit_log
 from app.services.trust_engine.extractor import extract_text
 from app.services.trust_engine.rules import ScannedSignals, run_rule_evaluation
@@ -54,6 +61,81 @@ async def run_trust_analysis(
     # 3. Parse content & evaluate rules
     signals = ScannedSignals(text_content)
     fired_rules = run_rule_evaluation(signals)
+
+    # 3.5 Inject Company Verification signals into fired rules
+    for domain in signals.domains:
+        if not domain:
+            continue
+        comp_res = await db.execute(
+            select(CompanyVerification).where(
+                CompanyVerification.website.like(f"%{domain}%"),
+                CompanyVerification.verification_status == "COMPLETED",
+            )
+        )
+        comp_ver = comp_res.scalars().first()
+        if comp_ver:
+            # Query breakdowns
+            bd_res = await db.execute(
+                select(CompanyVerificationBreakdown).where(
+                    CompanyVerificationBreakdown.verification_id == comp_ver.id
+                )
+            )
+            comp_bds = bd_res.scalars().all()
+            comp_rules = {b.rule_name for b in comp_bds}
+
+            # Map company verification signals to Trust Engine rules
+            if comp_ver.verification_level in ["VERIFIED", "LIKELY_VERIFIED"]:
+                fired_rules.append(
+                    {
+                        "rule_name": "COMPANY_VERIFIED",
+                        "rule_category": "COMPANY_SIGNALS",
+                        "weight": 10.0,
+                        "score_change": 10.0,
+                        "confidence": comp_ver.verification_confidence,
+                        "source": "Company Verification Engine",
+                        "reason": f"Company {comp_ver.company_name} is verified on the LEGITIFY engine.",
+                    }
+                )
+
+            if "CORPORATE_EMAIL" in comp_rules:
+                fired_rules.append(
+                    {
+                        "rule_name": "CORPORATE_EMAIL_VERIFIED",
+                        "rule_category": "RECRUITER_SIGNALS",
+                        "weight": 10.0,
+                        "score_change": 10.0,
+                        "confidence": "HIGH",
+                        "source": "Company Verification Engine",
+                        "reason": "Official corporate email domain has been verified.",
+                    }
+                )
+
+            if "ADDRESS_PRESENT" in comp_rules:
+                fired_rules.append(
+                    {
+                        "rule_name": "PHYSICAL_ADDRESS_VERIFIED",
+                        "rule_category": "CONTACT_SIGNALS",
+                        "weight": 5.0,
+                        "score_change": 5.0,
+                        "confidence": "HIGH",
+                        "source": "Company Verification Engine",
+                        "reason": "Headquarters physical address has been verified.",
+                    }
+                )
+
+            if "CAREERS_PAGE_EXISTS" in comp_rules:
+                fired_rules.append(
+                    {
+                        "rule_name": "CAREERS_PAGE_VERIFIED",
+                        "rule_category": "COMPANY_SIGNALS",
+                        "weight": 5.0,
+                        "score_change": 5.0,
+                        "confidence": "HIGH",
+                        "source": "Company Verification Engine",
+                        "reason": "Careers and recruitment page availability has been verified.",
+                    }
+                )
+            break
 
     # 4. Calculate scores & generate report content
     trust_score, risk_score, risk_level, confidence_score = calculate_scores(

@@ -7,7 +7,11 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.scan import Scan
 from app.models.report import EvidenceItem, TrustScoreBreakdown
-from app.schemas.trust import TrustAnalysisRequest, TrustAnalysisOut, TrustScoreBreakdownOut
+from app.schemas.trust import (
+    TrustAnalysisRequest,
+    TrustAnalysisOut,
+    TrustScoreBreakdownOut,
+)
 from app.schemas.report import EvidenceItemOut
 from app.schemas.base import StandardResponse
 from app.api.dependencies import get_current_user

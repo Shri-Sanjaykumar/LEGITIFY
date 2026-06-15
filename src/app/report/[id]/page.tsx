@@ -14,6 +14,8 @@ import AuthGuard from '@/components/shared/AuthGuard';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ScoreBreakdown from '@/components/report/ScoreBreakdown';
 import { useReportDetails, useReportEvidence, useReportHistory } from '@/hooks/useReport';
+import { useScanDetails } from '@/hooks/useScans';
+import CompanyVerificationPanel from '@/components/report/CompanyVerificationPanel';
 import type { TrustScore, RiskDimension } from '@/types';
 
 function ReportContent() {
@@ -42,6 +44,10 @@ function ReportContent() {
 
   // 3. Fetch evidence items for the resolved report ID
   const evidenceQuery = useReportEvidence(report ? resolvedReportId : null);
+
+  // 4. Fetch scan details unconditionally before any early returns
+  const scanQuery = useScanDetails(report ? report.scan_id : null);
+  const scan = scanQuery.data;
 
   const isLoading = 
     (directReportQuery.isLoading && !report) || 
@@ -141,6 +147,40 @@ function ReportContent() {
       };
     });
   };
+
+  // Extract domain from scan raw input text or from evidence description
+  const extractDomain = () => {
+    if (scan?.raw_input_text) {
+      const urlMatches = scan.raw_input_text.match(/https?:\/\/([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+      if (urlMatches && urlMatches[1]) {
+        return urlMatches[1].replace(/^www\./i, '').toLowerCase();
+      }
+      const emailMatches = scan.raw_input_text.match(/[a-zA-Z0-9._%+-]+@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+      if (emailMatches && emailMatches[1]) {
+        return emailMatches[1].toLowerCase();
+      }
+    }
+    // Search in evidence descriptions
+    for (const ev of evidenceList) {
+      if (ev.evidence_type === 'DOMAIN' || ev.evidence_type === 'EMAIL' || ev.evidence_type === 'COMPANY') {
+        const urlMatches = ev.description.match(/https?:\/\/([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+        if (urlMatches && urlMatches[1]) {
+          return urlMatches[1].replace(/^www\./i, '').toLowerCase();
+        }
+        const domainMatches = ev.description.match(/domain:\s*([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+        if (domainMatches && domainMatches[1]) {
+          return domainMatches[1].toLowerCase();
+        }
+        const emailMatches = ev.description.match(/[a-zA-Z0-9._%+-]+@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+        if (emailMatches && emailMatches[1]) {
+          return emailMatches[1].toLowerCase();
+        }
+      }
+    }
+    return '';
+  };
+
+  const domain = extractDomain();
 
   const docScore = getDimensionScore('document', report.trust_score);
   const domScore = getDimensionScore('domain', report.trust_score);
@@ -283,6 +323,14 @@ function ReportContent() {
       <div className="w-full">
         <AIAnalysis summary={report.summary} />
       </div>
+
+      {/* Enterprise Company Verification Audit */}
+      {domain && (
+        <div className="w-full space-y-4 text-left">
+          <h3 className="text-base font-bold text-[var(--text-primary)]">Enterprise Company Verification</h3>
+          <CompanyVerificationPanel domain={domain} />
+        </div>
+      )}
 
       {/* Row 3: Evidence Cards */}
       <div className="text-left">

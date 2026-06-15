@@ -197,3 +197,55 @@ export interface NavItem {
   icon?: string;
   badge?: string;
 }
+
+// ── Company Verification (Enterprise Engine) ──
+export interface CompanyVerification {
+  id: string;
+  company_name: string;
+  website: string;
+  company_email?: string;
+  contact_number?: string;
+  address?: string;
+  verification_score: number;
+  verification_status: string; // PENDING, PROCESSING, COMPLETED, FAILED
+  verification_level: string; // VERIFIED, LIKELY_VERIFIED, PARTIALLY_VERIFIED, SUSPICIOUS, UNVERIFIED
+  verification_confidence: string; // LOW, MEDIUM, HIGH
+  verification_version: string;
+  verification_source: string;
+  last_verified_at?: string;
+  next_verification_at?: string;
+  verification_expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompanyVerificationBreakdown {
+  id: string;
+  verification_id: string;
+  rule_name: string;
+  category: string;
+  score_change: number;
+  confidence: string;
+  source_reliability: string;
+  reason: string;
+  source: string;
+  created_at: string;
+}
+
+export interface CompanyVerificationEvidence {
+  id: string;
+  verification_id: string;
+  evidence_type: string;
+  description: string;
+  source: string;
+  severity: string;
+  confidence: string;
+  created_at: string;
+}
+
+export interface CompanyVerificationDetail {
+  verification: CompanyVerification;
+  breakdowns: CompanyVerificationBreakdown[];
+  evidence: CompanyVerificationEvidence[];
+}
+
