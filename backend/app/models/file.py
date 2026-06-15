@@ -26,6 +26,22 @@ class UploadedFile(Base):
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Enterprise Hardening Fields
+    virus_scan_status: Mapped[str] = mapped_column(String(50), default="PENDING", nullable=False)
+    virus_scan_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    virus_scan_engine: Mapped[str] = mapped_column(String(100), nullable=True)
+    duplicate_of: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("uploaded_files.id", ondelete="SET NULL"), 
+        nullable=True
+    )
+    document_type: Mapped[str] = mapped_column(String(50), default="UNKNOWN", nullable=False)
+    integrity_status: Mapped[str] = mapped_column(String(50), default="VERIFIED", nullable=False)
+
+    # Evidence Integrity Fields
+    sha256: Mapped[str] = mapped_column(String(64), nullable=True)
+    upload_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Relationships
     user = relationship("User", back_populates="uploads")
     scans = relationship("Scan", back_populates="file")
+    duplicate = relationship("UploadedFile", remote_side=[id])

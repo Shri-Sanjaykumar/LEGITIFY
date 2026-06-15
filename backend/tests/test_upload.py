@@ -210,3 +210,51 @@ async def test_download_file_not_found(client: AsyncClient, db: AsyncSession):
         headers=headers
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_upload_file_duplicate_deduplication(client: AsyncClient, db: AsyncSession):
+    headers_a = await get_auth_headers(client, "usera_dup@vitstudent.ac.in")
+    headers_b = await get_auth_headers(client, "userb_dup@vitstudent.ac.in")
+    
+    file_content = b"%PDF-1.4\nUnique content for deduplication test"
+    files = {"file": ("original.pdf", file_content, "application/pdf")}
+    response_orig = await client.post(
+        "/api/v1/scan/upload",
+        files=files,
+        headers=headers_a
+    )
+    assert response_orig.status_code == 201
+    orig_data = response_orig.json()["data"]
+    orig_id = orig_data["id"]
+    
+    from app.models.file import UploadedFile
+    from sqlalchemy.future import select
+    res = await db.execute(select(UploadedFile).where(UploadedFile.id == uuid.UUID(orig_id)))
+    orig_db = res.scalars().first()
+    assert orig_db.document_type == "PDF"
+    assert orig_db.duplicate_of is None
+    assert orig_db.virus_scan_status == "PENDING"
+    assert orig_db.integrity_status == "VERIFIED"
+    assert orig_db.sha256 == orig_db.file_hash
+    assert orig_db.upload_timestamp is not None
+    
+    response_dup = await client.post(
+        "/api/v1/scan/upload",
+        files={"file": ("duplicate.pdf", file_content, "application/pdf")},
+        headers=headers_b
+    )
+    assert response_dup.status_code == 201
+    dup_data = response_dup.json()["data"]
+    dup_id = dup_data["id"]
+    
+    res_dup = await db.execute(select(UploadedFile).where(UploadedFile.id == uuid.UUID(dup_id)))
+    dup_db = res_dup.scalars().first()
+    assert dup_db.duplicate_of == uuid.UUID(orig_id)
+    assert dup_db.file_path == orig_db.file_path
+    
+    from app.core.config import settings
+    files_in_dir = os.listdir(settings.UPLOAD_DIR)
+    matching = [f for f in files_in_dir if str(orig_id) in f]
+    if matching:
+        os.remove(os.path.join(settings.UPLOAD_DIR, matching[0]))
