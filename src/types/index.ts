@@ -309,4 +309,68 @@ export interface DomainVerificationDetail {
   evidence: DomainVerificationEvidence[];
 }
 
+// ── Recruiter Verification (Enterprise Engine) ──
+export interface RecruiterVerification {
+  id: string;
+  recruiter_name: string;
+  recruiter_email: string;
+  claimed_company: string;
+  recruiter_phone?: string;
+  recruiter_role?: string;
+  linkedin_profile_url?: string;
+  linkedin_validation_status: string; // UNKNOWN, VALID, INVALID
+  verification_score: number;
+  verification_status: string; // PENDING, PROCESSING, COMPLETED, FAILED
+  verification_level: string; // VERIFIED, LIKELY_VERIFIED, PARTIALLY_VERIFIED, SUSPICIOUS, UNVERIFIED, INTERNAL_RECRUITER
+  verification_confidence: string; // LOW, MEDIUM, HIGH
+  email_domain_status: string;
+  company_match_status: string;
+  phone_match_status: string;
+  last_verified_at?: string;
+  verification_expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecruiterVerificationBreakdown {
+  id: string;
+  verification_id: string;
+  rule_name: string;
+  category: string;
+  score_change: number;
+  confidence: string; // LOW, MEDIUM, HIGH
+  source_reliability: string; // LOW, MEDIUM, HIGH
+  reason: string;
+  source: string;
+  timestamp: string;
+}
+
+export interface RecruiterVerificationEvidence {
+  id: string;
+  verification_id: string;
+  evidence_type: string;
+  description: string;
+  source: string;
+  severity: string; // INFO, LOW, MEDIUM, HIGH, CRITICAL
+  confidence: string; // LOW, MEDIUM, HIGH
+  timestamp: string;
+}
+
+export interface RecruiterReputationSnapshot {
+  id: string;
+  recruiter_email: string;
+  claimed_company: string;
+  verification_score: number;
+  verification_level: string;
+  recruiter_verification_count: number;
+  recruiter_success_rate: number;
+  captured_at: string;
+}
+
+export interface RecruiterVerificationDetail {
+  verification: RecruiterVerification;
+  breakdowns: RecruiterVerificationBreakdown[];
+  evidence: RecruiterVerificationEvidence[];
+}
+
 

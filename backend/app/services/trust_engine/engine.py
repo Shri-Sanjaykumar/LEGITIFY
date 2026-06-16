@@ -16,6 +16,7 @@ from app.models.report import (
     CompanyVerificationBreakdown,
     DomainVerification,
 )
+from app.models.recruiter import RecruiterVerification
 from app.services.audit import create_audit_log
 from app.services.trust_engine.extractor import extract_text
 from app.services.trust_engine.rules import ScannedSignals, run_rule_evaluation
@@ -254,6 +255,79 @@ async def run_trust_analysis(
                     }
                 )
             break
+
+    # 3.7 Inject Recruiter Verification signals into fired rules
+    for email in signals.emails:
+        if not email:
+            continue
+        rec_res = await db.execute(
+            select(RecruiterVerification).where(
+                RecruiterVerification.recruiter_email == email,
+                RecruiterVerification.verification_status == "COMPLETED",
+            )
+        )
+        rec_ver = rec_res.scalars().first()
+        if rec_ver:
+            if rec_ver.verification_level == "VERIFIED":
+                fired_rules.append(
+                    {
+                        "rule_name": "RECRUITER_VERIFIED",
+                        "rule_category": "RECRUITER_SIGNALS",
+                        "weight": 15.0,
+                        "score_change": 15.0,
+                        "confidence": rec_ver.verification_confidence,
+                        "source": "Recruiter Verification Engine",
+                        "reason": f"Recruiter email {email} is verified on LEGITIFY.",
+                    }
+                )
+            elif rec_ver.verification_level == "LIKELY_VERIFIED":
+                fired_rules.append(
+                    {
+                        "rule_name": "RECRUITER_LIKELY_VERIFIED",
+                        "rule_category": "RECRUITER_SIGNALS",
+                        "weight": 10.0,
+                        "score_change": 10.0,
+                        "confidence": rec_ver.verification_confidence,
+                        "source": "Recruiter Verification Engine",
+                        "reason": f"Recruiter email {email} is classified as likely verified.",
+                    }
+                )
+            elif rec_ver.verification_level == "SUSPICIOUS":
+                fired_rules.append(
+                    {
+                        "rule_name": "RECRUITER_SUSPICIOUS",
+                        "rule_category": "RECRUITER_SIGNALS",
+                        "weight": -30.0,
+                        "score_change": -30.0,
+                        "confidence": rec_ver.verification_confidence,
+                        "source": "Recruiter Verification Engine",
+                        "reason": f"Recruiter email {email} has triggered suspicious domain or mismatch patterns.",
+                    }
+                )
+            elif rec_ver.verification_level == "UNVERIFIED":
+                fired_rules.append(
+                    {
+                        "rule_name": "RECRUITER_UNVERIFIED",
+                        "rule_category": "RECRUITER_SIGNALS",
+                        "weight": -45.0,
+                        "score_change": -45.0,
+                        "confidence": rec_ver.verification_confidence,
+                        "source": "Recruiter Verification Engine",
+                        "reason": f"Recruiter email {email} fails identity/domain verification checks.",
+                    }
+                )
+            elif rec_ver.verification_level == "INTERNAL_RECRUITER":
+                fired_rules.append(
+                    {
+                        "rule_name": "INTERNAL_RECRUITER_DETECTED",
+                        "rule_category": "RECRUITER_SIGNALS",
+                        "weight": 10.0,
+                        "score_change": 10.0,
+                        "confidence": rec_ver.verification_confidence,
+                        "source": "Recruiter Verification Engine",
+                        "reason": f"Recruiter email {email} is hosted on a secure internal corporate domain.",
+                    }
+                )
 
     # 4. Calculate scores & generate report content
     trust_score, risk_score, risk_level, confidence_score = calculate_scores(

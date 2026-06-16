@@ -17,6 +17,7 @@ import { useReportDetails, useReportEvidence, useReportHistory } from '@/hooks/u
 import { useScanDetails } from '@/hooks/useScans';
 import CompanyVerificationPanel from '@/components/report/CompanyVerificationPanel';
 import DomainIntelligencePanel from '@/components/report/DomainIntelligencePanel';
+import RecruiterVerificationPanel from '@/components/report/RecruiterVerificationPanel';
 import type { TrustScore, RiskDimension } from '@/types';
 
 function ReportContent() {
@@ -183,6 +184,38 @@ function ReportContent() {
 
   const domain = extractDomain();
 
+  const extractRecruiterInfo = () => {
+    if (!scan?.raw_input_text) return null;
+    const emailMatches = scan.raw_input_text.match(/([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+    if (emailMatches) {
+      const email = emailMatches[0];
+      const localPart = emailMatches[1];
+      const domainPart = emailMatches[2];
+      
+      const name = localPart
+        .split(/[._-]/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+        
+      let company = '';
+      const textLower = scan.raw_input_text.toLowerCase();
+      if (textLower.includes('microsoft')) company = 'Microsoft';
+      else if (textLower.includes('google')) company = 'Google';
+      else if (textLower.includes('amazon')) company = 'Amazon';
+      else if (textLower.includes('tcs')) company = 'TCS';
+      else if (textLower.includes('infosys')) company = 'Infosys';
+      else {
+        const companyName = domainPart.split('.')[0];
+        company = companyName.charAt(0).toUpperCase() + companyName.slice(1);
+      }
+      
+      return { email, name, company };
+    }
+    return null;
+  };
+
+  const recruiterInfo = extractRecruiterInfo();
+
   const docScore = getDimensionScore('document', report.trust_score);
   const domScore = getDimensionScore('domain', report.trust_score);
   const compScore = getDimensionScore('company', report.trust_score);
@@ -338,6 +371,18 @@ function ReportContent() {
         <div className="w-full space-y-4 text-left">
           <h3 className="text-base font-bold text-[var(--text-primary)]">Enterprise Company Verification</h3>
           <CompanyVerificationPanel domain={domain} />
+        </div>
+      )}
+
+      {/* Enterprise Recruiter Verification Audit */}
+      {recruiterInfo && (
+        <div className="w-full space-y-4 text-left">
+          <h3 className="text-base font-bold text-[var(--text-primary)]">Enterprise Recruiter Verification</h3>
+          <RecruiterVerificationPanel
+            recruiterEmail={recruiterInfo.email}
+            claimedCompany={recruiterInfo.company}
+            recruiterName={recruiterInfo.name}
+          />
         </div>
       )}
 

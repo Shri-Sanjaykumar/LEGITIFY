@@ -18,4 +18,10 @@ from app.models.report import (
     DomainVerificationEvidence,  # noqa: F401
     DomainReputationSnapshot,  # noqa: F401
 )
+from app.models.recruiter import (
+    RecruiterVerification,  # noqa: F401
+    RecruiterVerificationBreakdown,  # noqa: F401
+    RecruiterVerificationEvidence,  # noqa: F401
+    RecruiterReputationSnapshot,  # noqa: F401
+)
 from app.models.audit import AuditLog  # noqa
