@@ -271,7 +271,7 @@ async def test_recruiter_engine_caching_and_recycling(db: AsyncSession):
     rec = RecruiterVerification(
         id=uuid.uuid4(),
         recruiter_name="Jane Doe",
-        recruiter_email="jane@microsoft.com",
+        recruiter_email="jane.doe.test.cache@microsoft.com",
         claimed_company="Microsoft",
         verification_score=85.0,
         verification_status="COMPLETED",
@@ -289,17 +289,17 @@ async def test_recruiter_engine_caching_and_recycling(db: AsyncSession):
     db.add(rec)
     await db.commit()
 
-    cached = await get_cached_verification(db, "jane@microsoft.com", "Microsoft")
+    cached = await get_cached_verification(db, "jane.doe.test.cache@microsoft.com", "Microsoft")
     assert cached is not None
     assert cached.id == rec.id
 
     # Exception checking in cache hit
     with patch.object(db, "execute", side_effect=Exception("DB Cache Error")):
-        assert await get_cached_verification(db, "jane@microsoft.com", "Microsoft") is None
+        assert await get_cached_verification(db, "jane.doe.test.cache@microsoft.com", "Microsoft") is None
 
     # Recycle checks
     recycled = await start_recruiter_verification(
-        db, "Jane Updated", "jane@microsoft.com", "Microsoft"
+        db, "Jane Updated", "jane.doe.test.cache@microsoft.com", "Microsoft"
     )
     assert recycled.id == rec.id
     assert recycled.verification_status == "PENDING"
