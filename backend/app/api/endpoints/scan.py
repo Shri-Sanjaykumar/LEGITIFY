@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
 from app.models.user import User
@@ -29,13 +30,17 @@ from app.services.audit import create_audit_log
 from app.services.scan_state_machine import validate_transition
 from app.middleware.logging import request_id_var
 from app.api.dependencies import get_current_user
+from app.core.rate_limit import rate_limit
 
 router = APIRouter()
 logger = logging.getLogger("app.api.scan")
 
 
 @router.post(
-    "/upload", response_model=StandardResponse, status_code=status.HTTP_201_CREATED
+    "/upload",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit(20, 60))],
 )
 async def upload_file(
     request: Request,
@@ -67,7 +72,7 @@ async def upload_file(
     # Create audit log
     await create_audit_log(
         db=db,
-        action="FILE_UPLOAD",
+        action="FILE_UPLOADED",
         ip_address=client_ip,
         user_id=current_user.id,
         payload={"file_id": str(db_file.id), "filename": db_file.original_filename},
@@ -117,7 +122,10 @@ async def get_file(
 
 
 @router.post(
-    "/create", response_model=StandardResponse, status_code=status.HTTP_201_CREATED
+    "/create",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit(10, 60))],
 )
 async def create_scan(
     request: Request,
@@ -208,8 +216,10 @@ async def get_scan_history(
     req_id = request_id_var.get()
 
     # Form base query (Access Control: Users can only see their own scans)
-    query = select(Scan).where(
-        Scan.user_id == current_user.id, Scan.is_deleted.is_(False)
+    query = (
+        select(Scan)
+        .options(selectinload(Scan.report))
+        .where(Scan.user_id == current_user.id, Scan.is_deleted.is_(False))
     )
     count_query = (
         select(func.count())
@@ -346,7 +356,9 @@ async def get_scan_details(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Scan).where(Scan.id == id, Scan.is_deleted.is_(False))
+        select(Scan)
+        .options(selectinload(Scan.report))
+        .where(Scan.id == id, Scan.is_deleted.is_(False))
     )
     scan = result.scalars().first()
 

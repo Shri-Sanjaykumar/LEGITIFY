@@ -101,3 +101,15 @@ class Scan(Base):
     report = relationship(
         "Report", back_populates="scan", cascade="all, delete-orphan", uselist=False
     )
+
+    @property
+    def trust_score(self) -> float | None:
+        if "report" in self.__dict__ and self.report:
+            return self.report.trust_score
+        return None
+
+    @property
+    def report_id(self) -> uuid.UUID | None:
+        if "report" in self.__dict__ and self.report:
+            return self.report.id
+        return None

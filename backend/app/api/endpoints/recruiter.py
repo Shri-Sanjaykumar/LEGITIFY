@@ -29,12 +29,17 @@ from app.services.recruiter_verification.engine import (
     execute_verification_pipeline,
 )
 from app.middleware.logging import request_id_var
+from app.core.rate_limit import rate_limit
 
 router = APIRouter()
 logger = logging.getLogger("app.api.recruiter")
 
 
-@router.post("/verify", response_model=StandardResponse)
+@router.post(
+    "/verify",
+    response_model=StandardResponse,
+    dependencies=[Depends(rate_limit(10, 60))],
+)
 async def verify_recruiter(
     request: Request,
     body: RecruiterVerifyRequest,

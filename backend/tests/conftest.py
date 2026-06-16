@@ -55,5 +55,11 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def client(db) -> AsyncGenerator[AsyncClient, None]:
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as ac:
         yield ac
+
+
+@pytest.fixture(scope="function", autouse=True)
+def clear_rate_limiter():
+    from app.core.rate_limit import rate_limiter
+    rate_limiter.requests.clear()

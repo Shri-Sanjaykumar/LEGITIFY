@@ -19,8 +19,8 @@ export async function POST() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Cookie': `refresh_token=${refreshCookie.value}`,
       },
-      body: JSON.stringify({ refresh_token: refreshCookie.value }),
     });
 
     const json = await response.json();
@@ -40,16 +40,28 @@ export async function POST() {
       );
     }
 
-    const { access_token, refresh_token } = json.data;
+    // Extract cookie from backend response
+    const setCookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
+    const refreshTokenCookie = setCookies.find(c => c.trim().startsWith('refresh_token='));
+    let refreshTokenValue = '';
+    if (refreshTokenCookie) {
+      refreshTokenValue = refreshTokenCookie.split(';')[0].split('=')[1];
+    } else if (json.data && json.data.refresh_token) {
+      refreshTokenValue = json.data.refresh_token;
+    }
+
+    const access_token = json.data?.access_token;
 
     // Set rotated refresh token in cookie
-    cookieStore.set('refresh_token', refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-    });
+    if (refreshTokenValue) {
+      cookieStore.set('refresh_token', refreshTokenValue, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60, // 7 days
+      });
+    }
 
     return NextResponse.json({
       success: true,

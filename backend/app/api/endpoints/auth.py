@@ -1,7 +1,8 @@
 import uuid
 import logging
+from typing import Optional
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -20,13 +21,17 @@ from app.schemas.base import StandardResponse
 from app.services.audit import create_audit_log
 from app.middleware.logging import request_id_var
 from app.api.dependencies import get_current_user
+from app.core.rate_limit import rate_limit
 
 router = APIRouter()
 logger = logging.getLogger("app.api.auth")
 
 
 @router.post(
-    "/register", response_model=StandardResponse, status_code=status.HTTP_201_CREATED
+    "/register",
+    response_model=StandardResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit(3, 60))],
 )
 async def register(
     request: Request, user_in: UserRegister, db: AsyncSession = Depends(get_db)
@@ -73,9 +78,14 @@ async def register(
     )
 
 
-@router.post("/login", response_model=StandardResponse)
+@router.post(
+    "/login",
+    response_model=StandardResponse,
+    dependencies=[Depends(rate_limit(5, 60))],
+)
 async def login(
     request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
@@ -124,7 +134,15 @@ async def login(
         db=db, action="USER_LOGIN", ip_address=client_ip, user_id=user.id
     )
 
-    token_data = Token(access_token=access_token, refresh_token=refresh_token)
+    token_data = Token(access_token=access_token)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path="/",
+    )
     return StandardResponse(
         success=True,
         message="Logged in successfully.",
@@ -133,17 +151,29 @@ async def login(
     )
 
 
-@router.post("/refresh", response_model=StandardResponse)
+@router.post(
+    "/refresh",
+    response_model=StandardResponse,
+    dependencies=[Depends(rate_limit(10, 60))],
+)
 async def refresh(
     request: Request,
-    refresh_in: TokenRefreshRequest,
+    response: Response,
+    refresh_in: Optional[TokenRefreshRequest] = None,
     db: AsyncSession = Depends(get_db),
 ):
     req_id = request_id_var.get()
     client_ip = request.client.host if request.client else "unknown"
 
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token and refresh_in:
+        refresh_token = refresh_in.refresh_token
+
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token cookie missing")
+
     try:
-        payload = decode_token(refresh_in.refresh_token)
+        payload = decode_token(refresh_token)
         user_id = payload.get("sub")
         corr_id = payload.get("correlation_id")
         token_type = payload.get("type")
@@ -211,14 +241,24 @@ async def refresh(
     await db.commit()
 
     access_token = create_access_token(subject=user.id, role=user.role)
-    refresh_token = create_refresh_token(subject=user.id, correlation_id=new_corr_id)
+    new_refresh_token = create_refresh_token(
+        subject=user.id, correlation_id=new_corr_id
+    )
 
     # Log audit
     await create_audit_log(
         db=db, action="TOKEN_ROTATION", ip_address=client_ip, user_id=user.id
     )
 
-    token_data = Token(access_token=access_token, refresh_token=refresh_token)
+    token_data = Token(access_token=access_token)
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path="/",
+    )
     return StandardResponse(
         success=True,
         message="Tokens rotated successfully.",
@@ -230,6 +270,7 @@ async def refresh(
 @router.post("/logout", response_model=StandardResponse)
 async def logout(
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -251,6 +292,11 @@ async def logout(
     # Log audit
     await create_audit_log(
         db=db, action="USER_LOGOUT", ip_address=client_ip, user_id=current_user.id
+    )
+
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
     )
 
     return StandardResponse(

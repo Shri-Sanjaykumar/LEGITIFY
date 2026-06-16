@@ -43,6 +43,15 @@ async def run_trust_analysis(
     scan.started_at = datetime.now(timezone.utc)
     await db.flush()
 
+    # Log TRUST_ANALYSIS_STARTED
+    await create_audit_log(
+        db=db,
+        action="TRUST_ANALYSIS_STARTED",
+        ip_address="system",
+        user_id=current_user_id,
+        payload={"scan_id": str(scan_id)},
+    )
+
     # 2. Extract input text
     text_content = ""
     if scan.raw_input_text:
@@ -65,6 +74,7 @@ async def run_trust_analysis(
     fired_rules = run_rule_evaluation(signals)
 
     # 3.5 Inject Company Verification signals into fired rules
+    comp_ver_logged = False
     for domain in signals.domains:
         if not domain:
             continue
@@ -76,6 +86,20 @@ async def run_trust_analysis(
         )
         comp_ver = comp_res.scalars().first()
         if comp_ver:
+            await create_audit_log(
+                db=db,
+                action="COMPANY_VERIFIED",
+                ip_address="system",
+                user_id=current_user_id,
+                payload={
+                    "scan_id": str(scan_id),
+                    "company_name": comp_ver.company_name,
+                    "website": comp_ver.website,
+                    "verification_level": comp_ver.verification_level,
+                    "verification_status": comp_ver.verification_status,
+                },
+            )
+            comp_ver_logged = True
             # Query breakdowns
             bd_res = await db.execute(
                 select(CompanyVerificationBreakdown).where(
@@ -139,7 +163,21 @@ async def run_trust_analysis(
                 )
             break
 
+    if not comp_ver_logged:
+        await create_audit_log(
+            db=db,
+            action="COMPANY_VERIFIED",
+            ip_address="system",
+            user_id=current_user_id,
+            payload={
+                "scan_id": str(scan_id),
+                "verification_status": "NOT_FOUND",
+                "verification_level": "UNVERIFIED",
+            },
+        )
+
     # 3.6 Inject Domain Verification signals into fired rules
+    dom_ver_logged = False
     for domain in signals.domains:
         if not domain:
             continue
@@ -151,6 +189,23 @@ async def run_trust_analysis(
         )
         dom_ver = dom_res.scalars().first()
         if dom_ver:
+            await create_audit_log(
+                db=db,
+                action="DOMAIN_VERIFIED",
+                ip_address="system",
+                user_id=current_user_id,
+                payload={
+                    "scan_id": str(scan_id),
+                    "domain": dom_ver.domain,
+                    "dns_status": dom_ver.dns_status,
+                    "mx_status": dom_ver.mx_status,
+                    "spf_status": dom_ver.spf_status,
+                    "dmarc_status": dom_ver.dmarc_status,
+                    "ssl_status": dom_ver.ssl_status,
+                    "verification_status": dom_ver.verification_status,
+                },
+            )
+            dom_ver_logged = True
             # 1. DNS Status
             if dom_ver.dns_status == "RESOLVED":
                 fired_rules.append(
@@ -256,7 +311,20 @@ async def run_trust_analysis(
                 )
             break
 
+    if not dom_ver_logged:
+        await create_audit_log(
+            db=db,
+            action="DOMAIN_VERIFIED",
+            ip_address="system",
+            user_id=current_user_id,
+            payload={
+                "scan_id": str(scan_id),
+                "verification_status": "NOT_FOUND",
+            },
+        )
+
     # 3.7 Inject Recruiter Verification signals into fired rules
+    rec_ver_logged = False
     for email in signals.emails:
         if not email:
             continue
@@ -268,6 +336,19 @@ async def run_trust_analysis(
         )
         rec_ver = rec_res.scalars().first()
         if rec_ver:
+            await create_audit_log(
+                db=db,
+                action="RECRUITER_VERIFIED",
+                ip_address="system",
+                user_id=current_user_id,
+                payload={
+                    "scan_id": str(scan_id),
+                    "recruiter_email": rec_ver.recruiter_email,
+                    "verification_level": rec_ver.verification_level,
+                    "verification_status": rec_ver.verification_status,
+                },
+            )
+            rec_ver_logged = True
             if rec_ver.verification_level == "VERIFIED":
                 fired_rules.append(
                     {
@@ -329,6 +410,18 @@ async def run_trust_analysis(
                     }
                 )
 
+    if not rec_ver_logged:
+        await create_audit_log(
+            db=db,
+            action="RECRUITER_VERIFIED",
+            ip_address="system",
+            user_id=current_user_id,
+            payload={
+                "scan_id": str(scan_id),
+                "verification_status": "NOT_FOUND",
+            },
+        )
+
     # 4. Calculate scores & generate report content
     trust_score, risk_score, risk_level, confidence_score = calculate_scores(
         fired_rules
@@ -375,6 +468,18 @@ async def run_trust_analysis(
         )
         db.add(report)
         await db.flush()
+
+        await create_audit_log(
+            db=db,
+            action="REPORT_CREATED",
+            ip_address="system",
+            user_id=current_user_id,
+            payload={
+                "scan_id": str(scan_id),
+                "report_id": str(report.id),
+                "report_version": report.report_version,
+            },
+        )
 
     previous_status = report.report_status
 

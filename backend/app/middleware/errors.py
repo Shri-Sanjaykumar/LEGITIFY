@@ -4,11 +4,25 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError, HTTPException
 from app.schemas.base import StandardResponse
 from app.middleware.logging import request_id_var
+from app.core.rate_limit import RateLimitException
 
 logger = logging.getLogger("app.errors")
 
 
 def setup_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RateLimitException)
+    async def rate_limit_exception_handler(
+        request: Request, exc: RateLimitException
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "success": False,
+                "message": exc.message,
+                "request_id": exc.request_id,
+            },
+        )
+
     @app.exception_handler(HTTPException)
     async def http_exception_handler(
         request: Request, exc: HTTPException

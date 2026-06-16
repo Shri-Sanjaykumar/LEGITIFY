@@ -64,14 +64,24 @@ export async function POST(request: Request) {
       });
     }
 
-    const { access_token, refresh_token } = loginJson.data;
+    // Extract cookie from login response
+    const setCookies = loginResponse.headers.getSetCookie ? loginResponse.headers.getSetCookie() : [];
+    const refreshTokenCookie = setCookies.find(c => c.trim().startsWith('refresh_token='));
+    let refreshTokenValue = '';
+    if (refreshTokenCookie) {
+      refreshTokenValue = refreshTokenCookie.split(';')[0].split('=')[1];
+    } else if (loginJson.data && loginJson.data.refresh_token) {
+      refreshTokenValue = loginJson.data.refresh_token;
+    }
+
+    const access_token = loginJson.data?.access_token;
 
     // Set refresh token cookie
     const cookieStore = await cookies();
-    cookieStore.set('refresh_token', refresh_token, {
+    cookieStore.set('refresh_token', refreshTokenValue, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'strict',
       path: '/',
       maxAge: 7 * 24 * 60 * 60, // 7 days
     });

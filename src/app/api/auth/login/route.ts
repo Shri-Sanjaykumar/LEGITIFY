@@ -42,14 +42,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const { access_token, refresh_token } = json.data;
+    // Extract cookie from backend response
+    const setCookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
+    const refreshTokenCookie = setCookies.find(c => c.trim().startsWith('refresh_token='));
+    let refreshTokenValue = '';
+    if (refreshTokenCookie) {
+      refreshTokenValue = refreshTokenCookie.split(';')[0].split('=')[1];
+    } else if (json.data && json.data.refresh_token) {
+      refreshTokenValue = json.data.refresh_token;
+    }
+
+    const access_token = json.data?.access_token;
 
     // Set refresh token in HttpOnly cookie
     const cookieStore = await cookies();
-    cookieStore.set('refresh_token', refresh_token, {
+    cookieStore.set('refresh_token', refreshTokenValue, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'strict',
       path: '/',
       maxAge: 7 * 24 * 60 * 60, // 7 days
     });

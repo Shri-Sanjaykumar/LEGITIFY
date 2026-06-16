@@ -145,3 +145,12 @@ class ReportHistoryPage(BaseModel):
     page: int
     limit: int
     reports: List[Dict[str, Any]]
+
+
+class TimelineEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    action: str
+    created_at: datetime
+    payload: Optional[Dict[str, Any]] = None

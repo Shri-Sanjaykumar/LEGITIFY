@@ -115,44 +115,44 @@ export default function RecentScans({ scans = [], isLoading }: RecentScansProps)
                 const TypeIcon = typeIcons[scanType] || FileText;
                 const displayName = getDisplayName(scan);
                 
-                // Let's assume a default mock trust score if the scan has none (e.g. 72)
-                const trustScoreValue = scan.trustScore !== undefined ? scan.trustScore : (scan.status === 'COMPLETED' ? 72 : undefined);
+                const trustScoreValue = scan.trust_score !== undefined && scan.trust_score !== null 
+                  ? scan.trust_score 
+                  : (scan.trustScore !== undefined && scan.trustScore !== null ? scan.trustScore : null);
 
                 const rowContent = (
                   <>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0" style={{ background: typeInfo.bg }}>
-                          <TypeIcon className="w-4 h-4" style={{ color: typeInfo.color }} />
-                        </div>
-                        <span className="text-sm text-[var(--text-primary)] font-medium truncate max-w-[200px]">
-                          {truncate(displayName, 35)}
-                        </span>
-                      </div>
+                    <td className="px-5 py-3.5 flex items-center gap-3">
+                      <TypeIcon className="w-5 h-5" style={{ color: typeInfo.color }} />
+                      <span className="text-sm font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors">
+                        {truncate(displayName, 32)}
+                      </span>
                     </td>
                     <td className="px-3 py-3.5">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold"
-                        style={{ color: typeInfo.color, background: typeInfo.bg, border: `1px solid ${typeInfo.color}22` }}>
+                      <span className="px-2 py-0.5 text-xs font-semibold rounded-full" style={{ backgroundColor: typeInfo.bg, color: typeInfo.color }}>
                         {typeInfo.label}
                       </span>
                     </td>
                     <td className="px-3 py-3.5">
-                      <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold', statusInfo.pulse && 'animate-pulse')}
-                        style={{ color: statusInfo.color, background: statusInfo.bg, border: `1px solid ${statusInfo.border}` }}>
-                        {statusInfo.pulse && <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusInfo.color }} />}
+                      <span className={cn(
+                        "inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full border",
+                        statusInfo.pulse && "animate-pulse"
+                      )} style={{ backgroundColor: statusInfo.bg, color: statusInfo.color, borderColor: statusInfo.border }}>
                         {statusInfo.label}
                       </span>
                     </td>
                     <td className="px-3 py-3.5">
-                      {trustScoreValue !== undefined ? (
-                        <div className="flex items-center gap-3">
-                          <span className={cn('text-sm font-bold tabular-nums', getScoreColorClass(trustScoreValue))}>{trustScoreValue}</span>
-                          <div className="w-16 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
-                            <motion.div className="h-full rounded-full" style={{ background: getScoreBarColor(trustScoreValue) }}
-                              initial={{ width: 0 }} animate={{ width: `${trustScoreValue}%` }} transition={{ duration: 1, delay: 0.3, ease: 'easeOut' }} />
+                      {trustScoreValue !== null ? (
+                        <div className="flex items-center gap-2">
+                          <span className={cn("text-sm font-bold", getScoreColorClass(trustScoreValue))}>
+                            {trustScoreValue}
+                          </span>
+                          <div className="w-16 h-1.5 bg-[var(--border-primary)] rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${trustScoreValue}%`, backgroundColor: getScoreBarColor(trustScoreValue) }} />
                           </div>
                         </div>
-                      ) : <span className="text-sm text-[var(--text-muted)]">—</span>}
+                      ) : (
+                        <span className="text-xs text-[var(--text-tertiary)]">Not Available</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <span className="text-sm text-[var(--text-tertiary)]">{getRelativeTime(new Date(scan.created_at))}</span>

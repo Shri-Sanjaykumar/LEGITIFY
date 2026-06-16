@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.errors import setup_exception_handlers
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.api.endpoints import health, auth, scan, report, trust, company, domain, recruiter
 
 
@@ -32,6 +33,7 @@ if settings.BACKEND_CORS_ORIGINS:
 
 # 4. Add structured logging & request trace middleware
 app.add_middleware(StructuredLoggingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # 5. Add global error exception handlers
 setup_exception_handlers(app)

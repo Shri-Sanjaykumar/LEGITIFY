@@ -24,7 +24,7 @@ FREE_EMAIL_DOMAINS = {
 }
 
 # Major corporate brands
-MAJOR_BRANDS = {"microsoft", "google", "amazon", "tcs", "infosys"}
+MAJOR_BRANDS = {"microsoft", "google", "amazon", "tcs", "infosys", "accenture"}
 
 # Standard recruiter role keywords
 RECRUITER_ROLE_KEYWORDS = {

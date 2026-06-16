@@ -13,7 +13,7 @@ import ReportActions from '@/components/report/ReportActions';
 import AuthGuard from '@/components/shared/AuthGuard';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ScoreBreakdown from '@/components/report/ScoreBreakdown';
-import { useReportDetails, useReportEvidence, useReportHistory } from '@/hooks/useReport';
+import { useReportDetails, useReportEvidence, useReportHistory, useReportTimeline, type TimelineEvent } from '@/hooks/useReport';
 import { useScanDetails } from '@/hooks/useScans';
 import CompanyVerificationPanel from '@/components/report/CompanyVerificationPanel';
 import DomainIntelligencePanel from '@/components/report/DomainIntelligencePanel';
@@ -47,6 +47,9 @@ function ReportContent() {
   // 3. Fetch evidence items for the resolved report ID
   const evidenceQuery = useReportEvidence(report ? resolvedReportId : null);
 
+  // 3.5 Fetch timeline events for the resolved report ID
+  const timelineQuery = useReportTimeline(report ? resolvedReportId : null);
+
   // 4. Fetch scan details unconditionally before any early returns
   const scanQuery = useScanDetails(report ? report.scan_id : null);
   const scan = scanQuery.data;
@@ -54,7 +57,8 @@ function ReportContent() {
   const isLoading = 
     (directReportQuery.isLoading && !report) || 
     (historyQuery.isLoading && !report) || 
-    (evidenceQuery.isLoading && !!report);
+    (evidenceQuery.isLoading && !!report) ||
+    (timelineQuery.isLoading && !!report);
 
   if (isLoading) {
     return (
@@ -84,6 +88,7 @@ function ReportContent() {
   }
 
   const evidenceList = evidenceQuery.data || [];
+  const timelineEvents = timelineQuery.data || [];
 
   // Helper mapper to construct frontend dimensions layout from PostgreSQL tables
   const getDimensionScore = (type: string, baseScore: number) => {
@@ -274,44 +279,144 @@ function ReportContent() {
     : ['No immediate recommendations specified. Proceed with caution.'];
 
   // Map report history or mock typical investigation timeline
-  const investigationSteps = [
-    {
-      id: 'step-1',
-      agentName: 'Security Service',
-      action: 'File Verification',
-      result: 'Success (integrity check passed)',
-      status: 'completed' as const,
-      duration: 0.4,
-      timestamp: new Date(report.created_at),
-    },
-    {
-      id: 'step-2',
-      agentName: 'WHOIS Agent',
-      action: 'Domain Registry Analysis',
-      result: domScore >= 70 ? 'Verified Domain Registrant' : 'Domain registered via anonymous proxy recently',
-      status: domScore >= 70 ? ('completed' as const) : ('failed' as const),
-      duration: 1.1,
-      timestamp: new Date(report.created_at),
-    },
-    {
-      id: 'step-3',
-      agentName: 'Verification Agent',
-      action: 'Corporate Registry Verification',
-      result: compScore >= 70 ? 'Matched Active Registered Entity' : 'Registry match missing or inactive',
-      status: compScore >= 70 ? ('completed' as const) : ('failed' as const),
-      duration: 1.5,
-      timestamp: new Date(report.created_at),
-    },
-    {
-      id: 'step-4',
-      agentName: 'Sentiment Engine',
-      action: 'Community Reputation Check',
-      result: commScore >= 70 ? 'No negative reports found' : 'Warning: Negative reviews on public forums',
-      status: commScore >= 70 ? ('completed' as const) : ('failed' as const),
-      duration: 0.9,
-      timestamp: new Date(report.created_at),
-    },
-  ];
+  const getTimelineSteps = () => {
+    if (routeId === 'demo' || timelineEvents.length === 0) {
+      // Fallback/demo steps
+      return [
+        {
+          id: 'step-1',
+          agentName: 'Security Service',
+          action: 'File Verification',
+          result: 'Success (integrity check passed)',
+          status: 'completed' as const,
+          duration: 0.4,
+          timestamp: new Date(report.created_at),
+        },
+        {
+          id: 'step-2',
+          agentName: 'WHOIS Agent',
+          action: 'Domain Registry Analysis',
+          result: domScore >= 70 ? 'Verified Domain Registrant' : 'Domain registered via anonymous proxy recently',
+          status: domScore >= 70 ? ('completed' as const) : ('failed' as const),
+          duration: 1.1,
+          timestamp: new Date(report.created_at),
+        },
+        {
+          id: 'step-3',
+          agentName: 'Verification Agent',
+          action: 'Corporate Registry Verification',
+          result: compScore >= 70 ? 'Matched Active Registered Entity' : 'Registry match missing or inactive',
+          status: compScore >= 70 ? ('completed' as const) : ('failed' as const),
+          duration: 1.5,
+          timestamp: new Date(report.created_at),
+        },
+        {
+          id: 'step-4',
+          agentName: 'Sentiment Engine',
+          action: 'Community Reputation Check',
+          result: commScore >= 70 ? 'No negative reports found' : 'Warning: Negative reviews on public forums',
+          status: commScore >= 70 ? ('completed' as const) : ('failed' as const),
+          duration: 0.9,
+          timestamp: new Date(report.created_at),
+        },
+      ];
+    }
+
+    return timelineEvents.map((event: TimelineEvent, idx: number) => {
+      const payload = event.payload || {};
+      let agentName = 'System';
+      let action = event.action;
+      let result = 'Step executed successfully';
+      let status: 'completed' | 'failed' | 'skipped' = 'completed';
+      let duration = 0.5;
+
+      switch (event.action) {
+        case 'FILE_UPLOADED':
+          agentName = 'Uploader';
+          action = 'Document Ingestion';
+          result = `Successfully ingested file: ${payload.filename || 'uploaded document'}`;
+          status = 'completed';
+          duration = 0.4;
+          break;
+        case 'SCAN_CREATED':
+          agentName = 'Scan Engine';
+          action = 'Scan Initialization';
+          result = `Scan initialized (Type: ${payload.new_status || 'PENDING'})`;
+          status = 'completed';
+          duration = 0.2;
+          break;
+        case 'TRUST_ANALYSIS_STARTED':
+          agentName = 'Trust Engine';
+          action = 'Trust Analysis Pipeline';
+          result = 'Signal extraction and rule evaluation pipeline started.';
+          status = 'completed';
+          duration = 0.3;
+          break;
+        case 'COMPANY_VERIFIED':
+          agentName = 'Company Crawler';
+          action = 'Corporate Registry Audit';
+          if (payload.verification_status === 'NOT_FOUND') {
+            result = 'Entity match missing or inactive in corporate registries.';
+            status = 'failed';
+          } else {
+            result = `Matched company: ${payload.company_name} (${payload.verification_level})`;
+            status = ['VERIFIED', 'LIKELY_VERIFIED'].includes(payload.verification_level || '') ? 'completed' : 'failed';
+          }
+          duration = 1.5;
+          break;
+        case 'DOMAIN_VERIFIED':
+          agentName = 'DNS Intelligence';
+          action = 'Domain Security Audit';
+          if (payload.verification_status === 'NOT_FOUND') {
+            result = 'Domain intelligence check failed (no registrar data).';
+            status = 'failed';
+          } else {
+            result = `Domain: ${payload.domain} | DNS: ${payload.dns_status} | MX: ${payload.mx_status} | SSL: ${payload.ssl_status}`;
+            status = payload.dns_status === 'RESOLVED' && payload.ssl_status === 'VALID' ? 'completed' : 'failed';
+          }
+          duration = 1.2;
+          break;
+        case 'RECRUITER_VERIFIED':
+          agentName = 'Recruiter Engine';
+          action = 'Recruiter Verification';
+          if (payload.verification_status === 'NOT_FOUND') {
+            result = 'No recruiter registry matches found.';
+            status = 'skipped';
+          } else {
+            result = `Recruiter email: ${payload.recruiter_email} (${payload.verification_level})`;
+            status = ['VERIFIED', 'LIKELY_VERIFIED', 'INTERNAL_RECRUITER'].includes(payload.verification_level || '') ? 'completed' : 'failed';
+          }
+          duration = 1.0;
+          break;
+        case 'REPORT_CREATED':
+          agentName = 'Report Writer';
+          action = 'Report Generation';
+          result = `Draft report ${payload.report_version || 'v1'} generated.`;
+          status = 'completed';
+          duration = 0.3;
+          break;
+        case 'REPORT_COMPLETED':
+          agentName = 'Report Writer';
+          action = 'Report Compilation';
+          result = `Final report compiled. Trust Score: ${payload.trust_score || report.trust_score}/100.`;
+          status = 'completed';
+          duration = 0.8;
+          break;
+      }
+
+      return {
+        id: event.id || `evt-${idx}`,
+        agentName,
+        action,
+        result,
+        status,
+        duration,
+        timestamp: new Date(event.created_at),
+      };
+    });
+  };
+
+  const investigationSteps = getTimelineSteps();
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">

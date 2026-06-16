@@ -61,3 +61,40 @@ export function useReportBreakdown(id: string | null) {
     enabled: !!id && id !== 'demo',
   });
 }
+
+export interface TimelineEventPayload {
+  filename?: string;
+  new_status?: string;
+  verification_status?: string;
+  company_name?: string;
+  verification_level?: string;
+  domain?: string;
+  dns_status?: string;
+  mx_status?: string;
+  ssl_status?: string;
+  recruiter_email?: string;
+  report_version?: string;
+  trust_score?: number;
+}
+
+export interface TimelineEvent {
+  id: string;
+  action: string;
+  payload?: TimelineEventPayload;
+  created_at: string;
+}
+
+export function useReportTimeline(id: string | null) {
+  return useQuery({
+    queryKey: ['report', 'timeline', id],
+    queryFn: async () => {
+      if (!id || id === 'demo') return [];
+      const res = await apiFetch(`/report/${id}/timeline`);
+      if (!res.success) {
+        throw new Error(res.message || 'Failed to fetch report timeline');
+      }
+      return (res.data as { timeline: TimelineEvent[] }).timeline;
+    },
+    enabled: !!id && id !== 'demo',
+  });
+}

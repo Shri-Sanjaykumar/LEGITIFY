@@ -52,10 +52,10 @@ async def test_auth_flow(client: AsyncClient, db: AsyncSession):
     assert login_data["success"] is True
     tokens = login_data["data"]
     assert "access_token" in tokens
-    assert "refresh_token" in tokens
+    assert "refresh_token" not in tokens
     
     access_token = tokens["access_token"]
-    refresh_token = tokens["refresh_token"]
+    assert "refresh_token" in login_response.cookies
 
     # 4. Test Get Me Profile
     me_response = await client.get(
@@ -69,14 +69,14 @@ async def test_auth_flow(client: AsyncClient, db: AsyncSession):
 
     # 5. Test Token Refresh
     refresh_response = await client.post(
-        "/api/v1/auth/refresh",
-        json={"refresh_token": refresh_token}
+        "/api/v1/auth/refresh"
     )
     assert refresh_response.status_code == 200
     refresh_data = refresh_response.json()
     assert refresh_data["success"] is True
     assert "access_token" in refresh_data["data"]
-    assert "refresh_token" in refresh_data["data"]
+    assert "refresh_token" not in refresh_data["data"]
+    assert "refresh_token" in refresh_response.cookies
     
     new_access_token = refresh_data["data"]["access_token"]
 

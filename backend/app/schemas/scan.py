@@ -53,6 +53,8 @@ class ScanOut(BaseModel):
     completed_at: Optional[datetime]
     error_code: Optional[str]
     error_message: Optional[str]
+    trust_score: Optional[float] = None
+    report_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 

@@ -17,12 +17,17 @@ from app.schemas.base import StandardResponse
 from app.api.dependencies import get_current_user
 from app.services.trust_engine.engine import run_trust_analysis
 from app.middleware.logging import request_id_var
+from app.core.rate_limit import rate_limit
 
 router = APIRouter()
 logger = logging.getLogger("app.api.trust")
 
 
-@router.post("/analyze", response_model=StandardResponse)
+@router.post(
+    "/analyze",
+    response_model=StandardResponse,
+    dependencies=[Depends(rate_limit(10, 60))],
+)
 async def analyze_trust(
     request: Request,
     body: TrustAnalysisRequest,

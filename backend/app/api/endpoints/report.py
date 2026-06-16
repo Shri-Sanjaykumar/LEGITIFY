@@ -436,6 +436,35 @@ async def get_breakdown(
     )
 
 
+@router.get("/{report_id}/timeline", response_model=StandardResponse)
+async def get_timeline(
+    report_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_any_role),
+) -> StandardResponse:
+    """Retrieve the chronological audit-trail timeline events for a report."""
+    req_id = request_id_var.get()
+    from app.services.timeline.service import get_report_timeline
+    from app.schemas.report import TimelineEventOut
+
+    events = await get_report_timeline(db, report_id, current_user.id)
+    serialized_events = [
+        TimelineEventOut.model_validate(e).model_dump(mode="json") for e in events
+    ]
+
+    return StandardResponse(
+        success=True,
+        message="Report timeline retrieved.",
+        data={
+            "report_id": str(report_id),
+            "total": len(serialized_events),
+            "timeline": serialized_events,
+        },
+        request_id=req_id,
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # POST /api/v1/report/{id}/evidence
 # ──────────────────────────────────────────────────────────────────────────────
