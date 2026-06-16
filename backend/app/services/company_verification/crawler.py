@@ -279,7 +279,6 @@ async def fetch_website_details(url: str) -> Dict[str, Any]:
         # Remove HTML tags for clean regex search
         plain_text = re.sub(r"<[^>]+>", " ", html_content)
 
-
         # Phone
         phones = PHONE_REGEX.findall(plain_text)
         result["extracted_phones"] = list(

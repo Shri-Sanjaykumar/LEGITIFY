@@ -5,13 +5,17 @@ from app.models.user import User, Session  # noqa
 from app.models.file import UploadedFile  # noqa
 from app.models.scan import Scan  # noqa
 from app.models.report import (
-    Report,
-    TrustScore,
-    EvidenceItem,
-    ReportHistory,
-    TrustScoreBreakdown,
-    CompanyVerification,
-    CompanyVerificationBreakdown,
-    CompanyVerificationEvidence,
-)  # noqa
+    Report,  # noqa: F401
+    TrustScore,  # noqa: F401
+    EvidenceItem,  # noqa: F401
+    ReportHistory,  # noqa: F401
+    TrustScoreBreakdown,  # noqa: F401
+    CompanyVerification,  # noqa: F401
+    CompanyVerificationBreakdown,  # noqa: F401
+    CompanyVerificationEvidence,  # noqa: F401
+    DomainVerification,  # noqa: F401
+    DomainVerificationBreakdown,  # noqa: F401
+    DomainVerificationEvidence,  # noqa: F401
+    DomainReputationSnapshot,  # noqa: F401
+)
 from app.models.audit import AuditLog  # noqa

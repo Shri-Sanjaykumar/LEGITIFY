@@ -249,3 +249,64 @@ export interface CompanyVerificationDetail {
   evidence: CompanyVerificationEvidence[];
 }
 
+// ── Domain Verification (Enterprise Engine) ──
+export interface DomainVerification {
+  id: string;
+  domain: string;
+  verification_score: number;
+  verification_status: string; // PENDING, PROCESSING, COMPLETED, FAILED
+  verification_level: string; // VERIFIED, LIKELY_VERIFIED, PARTIALLY_VERIFIED, SUSPICIOUS, UNVERIFIED, INTERNAL_DOMAIN
+  verification_confidence: string; // LOW, MEDIUM, HIGH
+  dns_status: string;
+  mx_status: string;
+  spf_status: string;
+  dmarc_status: string;
+  dkim_status: string; // PRESENT, ABSENT, UNKNOWN
+  ssl_status: string;
+  certificate_expiry?: string;
+  last_verified_at?: string;
+  next_verification_at?: string;
+  verification_expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainVerificationBreakdown {
+  id: string;
+  verification_id: string;
+  rule_name: string;
+  category: string;
+  score_change: number;
+  confidence: string; // LOW, MEDIUM, HIGH
+  source_reliability: string; // LOW, MEDIUM, HIGH
+  reason: string;
+  source: string;
+  timestamp: string;
+}
+
+export interface DomainVerificationEvidence {
+  id: string;
+  verification_id: string;
+  evidence_type: string;
+  description: string;
+  source: string;
+  severity: string; // INFO, LOW, MEDIUM, HIGH, CRITICAL
+  confidence: string; // LOW, MEDIUM, HIGH
+  timestamp: string;
+}
+
+export interface DomainReputationSnapshot {
+  id: string;
+  domain: string;
+  verification_score: number;
+  verification_level: string;
+  captured_at: string;
+}
+
+export interface DomainVerificationDetail {
+  verification: DomainVerification;
+  breakdowns: DomainVerificationBreakdown[];
+  evidence: DomainVerificationEvidence[];
+}
+
+

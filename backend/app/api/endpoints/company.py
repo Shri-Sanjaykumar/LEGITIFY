@@ -110,13 +110,11 @@ async def get_verification_history(
                 CompanyVerification.verification_level == level_filter.upper()
             )
         if website:
-            query = query.where(
-                CompanyVerification.website.like(f"%{website}%")
-            )
+            query = query.where(CompanyVerification.website.like(f"%{website}%"))
         if search:
             query = query.where(
-                (CompanyVerification.company_name.like(f"%{search}%")) |
-                (CompanyVerification.website.like(f"%{search}%"))
+                (CompanyVerification.company_name.like(f"%{search}%"))
+                | (CompanyVerification.website.like(f"%{search}%"))
             )
 
         # Pagination offsets

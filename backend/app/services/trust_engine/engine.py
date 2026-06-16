@@ -14,6 +14,7 @@ from app.models.report import (
     ReportHistory,
     CompanyVerification,
     CompanyVerificationBreakdown,
+    DomainVerification,
 )
 from app.services.audit import create_audit_log
 from app.services.trust_engine.extractor import extract_text
@@ -133,6 +134,123 @@ async def run_trust_analysis(
                         "confidence": "HIGH",
                         "source": "Company Verification Engine",
                         "reason": "Careers and recruitment page availability has been verified.",
+                    }
+                )
+            break
+
+    # 3.6 Inject Domain Verification signals into fired rules
+    for domain in signals.domains:
+        if not domain:
+            continue
+        dom_res = await db.execute(
+            select(DomainVerification).where(
+                DomainVerification.domain == domain,
+                DomainVerification.verification_status == "COMPLETED",
+            )
+        )
+        dom_ver = dom_res.scalars().first()
+        if dom_ver:
+            # 1. DNS Status
+            if dom_ver.dns_status == "RESOLVED":
+                fired_rules.append(
+                    {
+                        "rule_name": "DNS_RESOLVED",
+                        "rule_category": "DOMAIN_SIGNALS",
+                        "weight": 5.0,
+                        "score_change": 5.0,
+                        "confidence": "HIGH",
+                        "source": "Domain Intelligence Engine",
+                        "reason": f"Domain {domain} successfully resolves on public DNS nameservers.",
+                    }
+                )
+            else:
+                fired_rules.append(
+                    {
+                        "rule_name": "NO_DNS_RECORDS",
+                        "rule_category": "DOMAIN_SIGNALS",
+                        "weight": -35.0,
+                        "score_change": -35.0,
+                        "confidence": "HIGH",
+                        "source": "Domain Intelligence Engine",
+                        "reason": f"Domain {domain} has no active public DNS resolution records.",
+                    }
+                )
+
+            # 2. MX Status
+            if dom_ver.mx_status == "CONFIGURED":
+                fired_rules.append(
+                    {
+                        "rule_name": "MX_INFRASTRUCTURE_VALID",
+                        "rule_category": "EMAIL_SIGNALS",
+                        "weight": 10.0,
+                        "score_change": 10.0,
+                        "confidence": "HIGH",
+                        "source": "Domain Intelligence Engine",
+                        "reason": f"Domain {domain} configuration lists active MX mail exchangers.",
+                    }
+                )
+            else:
+                fired_rules.append(
+                    {
+                        "rule_name": "NO_MX_RECORDS",
+                        "rule_category": "EMAIL_SIGNALS",
+                        "weight": -25.0,
+                        "score_change": -25.0,
+                        "confidence": "HIGH",
+                        "source": "Domain Intelligence Engine",
+                        "reason": f"Domain {domain} lacks mail exchange servers.",
+                    }
+                )
+
+            # 3. SPF / DMARC Status
+            if dom_ver.spf_status == "VALID":
+                fired_rules.append(
+                    {
+                        "rule_name": "EMAIL_SECURE_SPF",
+                        "rule_category": "EMAIL_SIGNALS",
+                        "weight": 5.0,
+                        "score_change": 5.0,
+                        "confidence": "MEDIUM",
+                        "source": "Domain Intelligence Engine",
+                        "reason": f"Sender Policy Framework (SPF) restricts spoofing on {domain}.",
+                    }
+                )
+            if dom_ver.dmarc_status == "VALID":
+                fired_rules.append(
+                    {
+                        "rule_name": "EMAIL_SECURE_DMARC",
+                        "rule_category": "EMAIL_SIGNALS",
+                        "weight": 5.0,
+                        "score_change": 5.0,
+                        "confidence": "HIGH",
+                        "source": "Domain Intelligence Engine",
+                        "reason": f"Domain-based Message Authentication (DMARC) alignment enabled on {domain}.",
+                    }
+                )
+
+            # 4. SSL Status
+            if dom_ver.ssl_status == "VALID":
+                fired_rules.append(
+                    {
+                        "rule_name": "SSL_CERTIFICATE_VALID",
+                        "rule_category": "SSL_SIGNALS",
+                        "weight": 10.0,
+                        "score_change": 10.0,
+                        "confidence": "HIGH",
+                        "source": "Domain Intelligence Engine",
+                        "reason": f"Valid TLS/SSL certificate trust chain established for {domain}.",
+                    }
+                )
+            elif dom_ver.ssl_status in ["EXPIRED", "INVALID"]:
+                fired_rules.append(
+                    {
+                        "rule_name": "SSL_INVALID_CHAIN",
+                        "rule_category": "SSL_SIGNALS",
+                        "weight": -30.0,
+                        "score_change": -30.0,
+                        "confidence": "HIGH",
+                        "source": "Domain Intelligence Engine",
+                        "reason": f"TLS/SSL certificate for {domain} is expired or handshake failed.",
                     }
                 )
             break

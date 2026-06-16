@@ -16,6 +16,7 @@ import ScoreBreakdown from '@/components/report/ScoreBreakdown';
 import { useReportDetails, useReportEvidence, useReportHistory } from '@/hooks/useReport';
 import { useScanDetails } from '@/hooks/useScans';
 import CompanyVerificationPanel from '@/components/report/CompanyVerificationPanel';
+import DomainIntelligencePanel from '@/components/report/DomainIntelligencePanel';
 import type { TrustScore, RiskDimension } from '@/types';
 
 function ReportContent() {
@@ -323,6 +324,14 @@ function ReportContent() {
       <div className="w-full">
         <AIAnalysis summary={report.summary} />
       </div>
+
+      {/* Enterprise Domain Intelligence Audit */}
+      {domain && (
+        <div className="w-full space-y-4 text-left">
+          <h3 className="text-base font-bold text-[var(--text-primary)]">Enterprise Domain Security Audits</h3>
+          <DomainIntelligencePanel domain={domain} />
+        </div>
+      )}
 
       {/* Enterprise Company Verification Audit */}
       {domain && (

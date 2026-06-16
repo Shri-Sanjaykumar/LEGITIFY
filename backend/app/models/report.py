@@ -441,3 +441,181 @@ class CompanyVerificationEvidence(Base):
     )
 
     verification = relationship("CompanyVerification", back_populates="evidence")
+
+
+class DomainVerification(Base):
+    __tablename__ = "domain_verifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    verification_score: Mapped[float] = mapped_column(
+        Float,
+        CheckConstraint(
+            "verification_score >= 0.0 AND verification_score <= 100.0",
+            name="check_domain_verification_score_range",
+        ),
+        default=0.0,
+    )
+    verification_status: Mapped[str] = mapped_column(
+        String(50),
+        CheckConstraint(
+            "verification_status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')",
+            name="check_domain_verification_status",
+        ),
+        default="PENDING",
+    )
+    verification_level: Mapped[str] = mapped_column(
+        String(50),
+        CheckConstraint(
+            "verification_level IN ('VERIFIED', 'LIKELY_VERIFIED', 'PARTIALLY_VERIFIED', 'SUSPICIOUS', 'UNVERIFIED', 'INTERNAL_DOMAIN')",
+            name="check_domain_verification_level",
+        ),
+        default="UNVERIFIED",
+    )
+    verification_confidence: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "verification_confidence IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_domain_verification_confidence",
+        ),
+        default="LOW",
+    )
+    dns_status: Mapped[str] = mapped_column(String(50), default="UNKNOWN")
+    mx_status: Mapped[str] = mapped_column(String(50), default="UNKNOWN")
+    spf_status: Mapped[str] = mapped_column(String(50), default="UNKNOWN")
+    dmarc_status: Mapped[str] = mapped_column(String(50), default="UNKNOWN")
+    dkim_status: Mapped[str] = mapped_column(
+        String(50),
+        CheckConstraint(
+            "dkim_status IN ('PRESENT', 'ABSENT', 'UNKNOWN')",
+            name="check_domain_dkim_status",
+        ),
+        default="UNKNOWN",
+    )
+    ssl_status: Mapped[str] = mapped_column(String(50), default="UNKNOWN")
+    certificate_expiry: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_verification_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    verification_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    breakdowns = relationship(
+        "DomainVerificationBreakdown",
+        back_populates="verification",
+        cascade="all, delete-orphan",
+    )
+    evidence = relationship(
+        "DomainVerificationEvidence",
+        back_populates="verification",
+        cascade="all, delete-orphan",
+    )
+
+
+class DomainVerificationBreakdown(Base):
+    __tablename__ = "domain_verification_breakdowns"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    verification_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("domain_verifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rule_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    confidence: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "confidence IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_domain_breakdown_confidence",
+        ),
+        nullable=False,
+    )
+    source_reliability: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "source_reliability IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_domain_breakdown_source_reliability",
+        ),
+        nullable=False,
+    )
+    score_change: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    verification = relationship("DomainVerification", back_populates="breakdowns")
+
+
+class DomainVerificationEvidence(Base):
+    __tablename__ = "domain_verification_evidence"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    verification_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("domain_verifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    evidence_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    severity: Mapped[str] = mapped_column(
+        String(50),
+        CheckConstraint(
+            "severity IN ('INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL')",
+            name="check_domain_evidence_severity",
+        ),
+        nullable=False,
+    )
+    confidence: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint(
+            "confidence IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="check_domain_evidence_confidence",
+        ),
+        nullable=False,
+    )
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    verification = relationship("DomainVerification", back_populates="evidence")
+
+
+class DomainReputationSnapshot(Base):
+    __tablename__ = "domain_reputation_snapshots"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    verification_score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
+    verification_level: Mapped[str] = mapped_column(String(50), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
