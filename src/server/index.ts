@@ -990,7 +990,7 @@ app.post('/api/notifications/email', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+if (!process.env.VERCEL) {\n  app.listen(PORT, () => {
   console.log(`🛡️  [LEGITIFY API] Server online on http://localhost:${PORT}`);
 });
 
