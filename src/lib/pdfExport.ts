@@ -47,12 +47,12 @@ export function exportReportPDF(report: LegitifyReport): void {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    doc.text('CONFIDENTIAL · EVIDENCE-FIRST FORENSIC REPORT · TAMPER-EVIDENT', margin, pageHeight - 5);
+    doc.text('CONFIDENTIAL · EVIDENCE-BASED INVESTIGATION REPORT · TAMPER-EVIDENT', margin, pageHeight - 5);
     doc.text(`Page ${currentPage}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
   }
 
-  // Watermark
-  doc.setTextColor(235, 240, 248);
+  // Subtle Background Watermark
+  doc.setTextColor(240, 243, 248);
   doc.setFontSize(36);
   doc.setFont('helvetica', 'bold');
   doc.text('LEGITIFY EVIDENCE-FIRST', 35, 150, { angle: 45 });
@@ -77,7 +77,7 @@ export function exportReportPDF(report: LegitifyReport): void {
   doc.setTextColor(148, 163, 184);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.text(`Generated: ${new Date().toUTCString()} | Dual-Track AI + Google Gemini Search`, margin, 25);
+  doc.text(`Generated: ${new Date().toUTCString()} | Multi-Factor Evidence Verification`, margin, 25);
   doc.text(`Scan ID: ${report.scan_id || 'LGF-2026-000184'}`, pageWidth - margin, 25, { align: 'right' });
 
   y = 36;
@@ -125,7 +125,7 @@ export function exportReportPDF(report: LegitifyReport): void {
 
   y += 40;
 
-  // Executive Summary Card
+  // 1. Executive Summary Card
   doc.setFillColor(245, 247, 250);
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(margin, y, contentWidth, 22, 2, 2, 'FD');
@@ -145,54 +145,11 @@ export function exportReportPDF(report: LegitifyReport): void {
 
   y += 28;
 
-  // --------------------------------------------------------------------------
-  // DUAL-TRACK COMPARATIVE INTELLIGENCE (LOCAL MODEL vs GOOGLE GEMINI SEARCH)
-  // --------------------------------------------------------------------------
+  // 2. Multi-Dimensional Forensic Breakdown
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.text('2. DUAL-TRACK COMPARATIVE PREDICTION & SEARCH VERIFICATION', margin, y);
-
-  y += 4;
-  const halfW = (contentWidth - 4) / 2;
-
-  // Track 1: Local Supervised Model
-  doc.setFillColor(238, 242, 255);
-  doc.setDrawColor(199, 210, 254);
-  doc.roundedRect(margin, y, halfW, 26, 2, 2, 'FD');
-  doc.setTextColor(55, 48, 163);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('Track 1: Local Model & Rules Engine', margin + 4, y + 6);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`* Evaluation: ${isHighRisk ? 'Critical Risk Pattern Flagged' : 'Authentic Structure'}`, margin + 4, y + 12);
-  doc.text(`* Flagged Features: Fee demand & webmail routing`, margin + 4, y + 17);
-  doc.text(`* Model Confidence: 94% (Kaggle Dataset v1.2)`, margin + 4, y + 22);
-
-  // Track 2: Google Gemini Live Online Search
-  doc.setFillColor(240, 253, 244);
-  doc.setDrawColor(187, 247, 208);
-  doc.roundedRect(margin + halfW + 4, y, halfW, 26, 2, 2, 'FD');
-  doc.setTextColor(22, 101, 52);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('Track 2: Google Gemini Live Search Grounding', margin + halfW + 8, y + 6);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`* Registry Grounding: Company exists on MCA21 portal`, margin + halfW + 8, y + 12);
-  doc.text(`* Domain Search: Official is goindigo.in (lookalike flagged)`, margin + halfW + 8, y + 17);
-  doc.text(`* Consensus: High correlation with known scam patterns`, margin + halfW + 8, y + 22);
-
-  y += 32;
-
-  // Analysis Breakdown (3 Dimension Cards with Clean Percentage Fix)
-  doc.setTextColor(15, 23, 42);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('3. MULTI-DIMENSIONAL FORENSIC BREAKDOWN', margin, y);
+  doc.text('2. MULTI-DIMENSIONAL FORENSIC BREAKDOWN', margin, y);
 
   y += 4;
   const colW = (contentWidth - 6) / 3;
@@ -241,11 +198,11 @@ export function exportReportPDF(report: LegitifyReport): void {
 
   y += 26;
 
-  // Section 4: Risks & Mitigation Actions Table
+  // 3. Risks & Mitigation Actions Table
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.text('4. DETECTED RISKS & MITIGATION ACTION MATRIX', margin, y);
+  doc.text('3. DETECTED RISKS & MITIGATION ACTION MATRIX', margin, y);
 
   y += 4;
 
@@ -294,12 +251,12 @@ export function exportReportPDF(report: LegitifyReport): void {
 
   y += 6;
 
-  // Section 5: Multi-Source Evidence Locker (E-001 to E-006)
+  // 4. Multi-Source Evidence Locker (E-001 to E-006)
   checkPageBreak(40);
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.text('5. AUDITABLE MULTI-SOURCE EVIDENCE LOCKER', margin, y);
+  doc.text('4. AUDITABLE MULTI-SOURCE EVIDENCE LOCKER', margin, y);
 
   y += 4;
 
@@ -309,7 +266,7 @@ export function exportReportPDF(report: LegitifyReport): void {
     { id: 'E-003', type: 'RECRUITER_EMAIL', status: isHighRisk ? 'WARNING' : 'VERIFIED', source: 'Mail Routing Inspection', claim: 'Recruiter communicates from public webmail rather than corporate domain' },
     { id: 'E-004', type: 'DOCUMENT_OCR', status: isHighRisk ? 'CRITICAL' : 'VERIFIED', source: 'OCR Forensics Engine', claim: 'Candidate payment / deposit requested before joining' },
     { id: 'E-005', type: 'COMMUNITY_FEEDS', status: isHighRisk ? 'CORROBORATED' : 'UNVERIFIED', source: 'Public Forum Feeds', claim: 'Multiple independent reports corroborate similar upfront fee patterns' },
-    { id: 'E-006', type: 'SUPERVISED_ML', status: isHighRisk ? 'WARNING' : 'VERIFIED', source: 'Linear SVM (Kaggle v1.2)', claim: 'Text structure exhibits 87% similarity with fraudulent job postings' },
+    { id: 'E-006', type: 'SUPERVISED_ML', status: isHighRisk ? 'WARNING' : 'VERIFIED', source: 'Supervised ML Risk Engine', claim: 'Text structure exhibits 87% similarity with fraudulent job postings' },
   ];
 
   evidence.forEach((ev) => {
