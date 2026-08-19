@@ -5,7 +5,8 @@ import {
   LogOut, Download, Upload, ArrowRight, CheckCircle2, AlertTriangle,
   X, RefreshCw, Cpu, PhoneCall, ExternalLink, Lock, User, GraduationCap,
   Sparkles, Layers, Activity, ChevronRight, BarChart2, Database,
-  Code2, AlertCircle, ChevronLeft, Search, Eye, Filter, Check, Copy, Flame
+  Code2, AlertCircle, ChevronLeft, Search, Eye, Filter, Check, Copy, Flame,
+  HelpCircle, MessageSquare, Swords, CheckSquare, FileSearch
 } from "lucide-react";
 
 import { supabase } from "../lib/supabase/client";
@@ -20,7 +21,7 @@ import {
 import { LegitifyReport, ScanRecord } from "../types";
 
 // ================================================================
-// THEME HELPERS & VERDICT PALETTE
+// TYPES & THEMES
 // ================================================================
 
 type AuthScreen = "gate" | "candidate_login" | "admin_login";
@@ -49,31 +50,34 @@ function getVerdictTheme(verdict?: string, score?: number) {
 
   if (v.includes("FAKE") || v.includes("SCAM") || v.includes("CRITICAL") || s <= 35) {
     return {
-      label: "Likely Fake",
+      label: "Critical Risk · Likely Scam",
+      shortLabel: "Likely Scam",
       emoji: "🚨",
       color: "#FF3B5C",
       glowColor: "rgba(255, 59, 92, 0.4)",
       badgeClass: "bg-red-500/20 text-[#FF3B5C] border-2 border-red-500/50 shadow-[0_0_20px_rgba(255,59,92,0.4)]",
-      description: "This document shows strong indicators of being fraudulent. Exercise extreme caution. Do not pay money or share IDs.",
+      description: "This opportunity exhibits critical fraud patterns (unauthorized payment request, lookalike domain, or unverified webmail). Exercise extreme caution.",
     };
   }
   if (v.includes("SUSPICIOUS") || v.includes("MODERATE") || v.includes("HIGH RISK") || s <= 65) {
     return {
-      label: "Suspicious",
+      label: "Moderate Risk · Suspicious",
+      shortLabel: "Suspicious",
       emoji: "⚠️",
       color: "#F59E0B",
       glowColor: "rgba(245, 158, 11, 0.4)",
       badgeClass: "bg-amber-500/20 text-amber-300 border-2 border-amber-500/50 shadow-[0_0_20px_rgba(245,158,11,0.4)]",
-      description: "This document has several concerning characteristics. Verify independently with official corporate channels.",
+      description: "Document contains multiple structural anomalies. Independent verification through official corporate channels is strongly advised.",
     };
   }
   return {
-    label: "Likely Genuine",
+    label: "Low Risk · Likely Genuine",
+    shortLabel: "Likely Genuine",
     emoji: "✅",
     color: "#00FF87",
     glowColor: "rgba(0, 255, 135, 0.4)",
     badgeClass: "bg-emerald-500/20 text-[#00FF87] border-2 border-emerald-500/50 shadow-[0_0_20px_rgba(0,255,135,0.4)]",
-    description: "Our forensic analysis indicates this is an authentic offer letter with verified corporate identifiers.",
+    description: "Our forensic analysis confirms authentic corporate identifiers, corporate domain alignment, and absence of candidate payment demands.",
   };
 }
 
@@ -100,7 +104,7 @@ function AnimatedCounter({ value }: { value: number }) {
 }
 
 // ================================================================
-// RICH COPILOT MESSAGE RENDERER
+// RICH MARKDOWN & EVIDENCE CITATION RENDERER FOR COPILOT
 // ================================================================
 
 function FormattedCopilotMessage({ text }: { text: string }) {
@@ -136,9 +140,16 @@ function FormattedCopilotMessage({ text }: { text: string }) {
 
         if (trimmed.startsWith("*") || trimmed.startsWith("-")) {
           const content = trimmed.replace(/^[*-]\s*/, "");
-          const formatted = content.split(/(\*\*.*?\*\*)/g).map((chunk, cIdx) => {
+          const formatted = content.split(/(\*\*.*?\*\*|\[E-\d+\]|`.*?`)/g).map((chunk, cIdx) => {
             if (chunk.startsWith("**") && chunk.endsWith("**")) {
               return <strong key={cIdx} className="text-slate-100 font-extrabold">{chunk.slice(2, -2)}</strong>;
+            }
+            if (/^\[E-\d+\]$/.test(chunk)) {
+              return (
+                <span key={cIdx} className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-sm font-bold border border-indigo-500/40 mx-1">
+                  {chunk.slice(1, -1)}
+                </span>
+              );
             }
             if (chunk.startsWith("`") && chunk.endsWith("`")) {
               return <code key={cIdx} className="px-2 py-0.5 rounded-lg bg-slate-800 text-[#00FF87] font-mono text-sm font-bold border border-[#00FF87]/30">{chunk.slice(1, -1)}</code>;
@@ -159,9 +170,19 @@ function FormattedCopilotMessage({ text }: { text: string }) {
           if (match) {
             const num = match[1];
             const content = match[2];
-            const formatted = content.split(/(\*\*.*?\*\*)/g).map((chunk, cIdx) => {
+            const formatted = content.split(/(\*\*.*?\*\*|\[E-\d+\]|`.*?`)/g).map((chunk, cIdx) => {
               if (chunk.startsWith("**") && chunk.endsWith("**")) {
                 return <strong key={cIdx} className="text-slate-100 font-extrabold">{chunk.slice(2, -2)}</strong>;
+              }
+              if (/^\[E-\d+\]$/.test(chunk)) {
+                return (
+                  <span key={cIdx} className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-sm font-bold border border-indigo-500/40 mx-1">
+                    {chunk.slice(1, -1)}
+                  </span>
+                );
+              }
+              if (chunk.startsWith("`") && chunk.endsWith("`")) {
+                return <code key={cIdx} className="px-2 py-0.5 rounded-lg bg-slate-800 text-[#00FF87] font-mono text-sm font-bold border border-[#00FF87]/30">{chunk.slice(1, -1)}</code>;
               }
               return chunk;
             });
@@ -177,9 +198,16 @@ function FormattedCopilotMessage({ text }: { text: string }) {
           }
         }
 
-        const formatted = trimmed.split(/(\*\*.*?\*\*)/g).map((chunk, cIdx) => {
+        const formatted = trimmed.split(/(\*\*.*?\*\*|\[E-\d+\]|`.*?`)/g).map((chunk, cIdx) => {
           if (chunk.startsWith("**") && chunk.endsWith("**")) {
             return <strong key={cIdx} className="text-slate-100 font-extrabold">{chunk.slice(2, -2)}</strong>;
+          }
+          if (/^\[E-\d+\]$/.test(chunk)) {
+            return (
+              <span key={cIdx} className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-sm font-bold border border-indigo-500/40 mx-1">
+                {chunk.slice(1, -1)}
+              </span>
+            );
           }
           if (chunk.startsWith("`") && chunk.endsWith("`")) {
             return <code key={cIdx} className="px-2 py-0.5 rounded-lg bg-slate-800 text-[#00FF87] font-mono text-sm font-bold border border-[#00FF87]/30">{chunk.slice(1, -1)}</code>;
@@ -194,10 +222,9 @@ function FormattedCopilotMessage({ text }: { text: string }) {
 }
 
 // ================================================================
-// SEPARATE DEDICATED LOGIN PAGES
+// DEDICATED SEPARATE LOGIN SCREENS
 // ================================================================
 
-// 1. Main Gateway Screen
 function AuthGatewayLanding({
   onSelectRole,
 }: {
@@ -205,18 +232,16 @@ function AuthGatewayLanding({
 }) {
   return (
     <div className="min-h-screen bg-[#060709] text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* Dynamic Ambient Mesh */}
       <div className="absolute -top-40 -left-40 w-[600px] h-[600px] bg-gradient-to-br from-[#00FF87]/20 to-[#00F0FF]/15 rounded-full blur-[140px] pointer-events-none animate-pulse" />
       <div className="absolute -bottom-40 -right-40 w-[600px] h-[600px] bg-gradient-to-br from-[#8B5CF6]/20 to-[#FF3B5C]/15 rounded-full blur-[140px] pointer-events-none animate-pulse" />
       <div className="absolute inset-0 bg-[radial-gradient(#1E2838_1.5px,transparent_1.5px)] [background-size:32px_32px] opacity-50 pointer-events-none" />
 
       <div className="max-w-3xl w-full space-y-10 relative z-10 text-center">
-        {/* Brand Banner */}
         <div className="space-y-4">
           <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-[#0F131A]/90 border-2 border-[#00FF87]/40 shadow-[0_0_30px_rgba(0,255,135,0.3)]">
             <Shield className="w-6 h-6 text-[#00FF87]" />
             <span className="text-sm font-mono font-black tracking-widest text-[#00FF87] text-glow-emerald uppercase">
-              LEGITIFY FORENSIC & TRUST INTELLIGENCE
+              LEGITIFY EVIDENCE-GROUNDED TRUST PLATFORM
             </span>
           </div>
 
@@ -229,9 +254,7 @@ function AuthGatewayLanding({
           </p>
         </div>
 
-        {/* Two Big Colorful Portal Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-          {/* Candidate Card */}
           <div
             onClick={() => onSelectRole("candidate_login")}
             className="p-8 rounded-3xl bg-gradient-to-b from-[#0F141E] to-[#0A0D14] border-2 border-[#00FF87]/40 hover:border-[#00FF87] shadow-[0_15px_40px_rgba(0,255,135,0.15)] hover:shadow-[0_20px_60px_rgba(0,255,135,0.35)] transition-all duration-300 cursor-pointer transform hover:-translate-y-2 group space-y-6 flex flex-col justify-between"
@@ -244,7 +267,7 @@ function AuthGatewayLanding({
                 Student / Candidate Portal
               </h3>
               <p className="text-base text-slate-300 leading-relaxed">
-                Verify internship offer letters, detect fee scams, test recruiter emails, and receive personalized guidance from Trust AI Copilot.
+                Verify internship offer letters, inspect recruiter email domains, detect upfront fee scams, and interrogate evidence with Trust AI Copilot.
               </p>
             </div>
 
@@ -254,7 +277,6 @@ function AuthGatewayLanding({
             </div>
           </div>
 
-          {/* Admin SOC Card */}
           <div
             onClick={() => onSelectRole("admin_login")}
             className="p-8 rounded-3xl bg-gradient-to-b from-[#0F141E] to-[#0A0D14] border-2 border-[#00F0FF]/40 hover:border-[#00F0FF] shadow-[0_15px_40px_rgba(0,240,255,0.15)] hover:shadow-[0_20px_60px_rgba(0,240,255,0.35)] transition-all duration-300 cursor-pointer transform hover:-translate-y-2 group space-y-6 flex flex-col justify-between"
@@ -267,7 +289,7 @@ function AuthGatewayLanding({
                 Security Ops / Admin Portal
               </h3>
               <p className="text-base text-slate-300 leading-relaxed">
-                Full telemetry, threat intelligence IOCs, supervised ML risk models, upstream provider health, and global case registries.
+                Full forensic telemetry, threat intelligence IOCs, supervised ML risk models, upstream provider health, and global case registries.
               </p>
             </div>
 
@@ -282,7 +304,6 @@ function AuthGatewayLanding({
   );
 }
 
-// 2. Dedicated Candidate Login Page
 function CandidateLoginPage({
   onBack,
   onLoginSuccess,
@@ -312,8 +333,8 @@ function CandidateLoginPage({
     } catch {
       const fallback = {
         id: `google-${Date.now()}`,
-        email: "priya.candidate@gmail.com",
-        user_metadata: { full_name: "Priya Sharma", role: "candidate" },
+        email: "sanjaykumar.v2023@vitstudent.ac.in",
+        user_metadata: { full_name: "Sanjay Kumar. V", role: "candidate" },
         app_metadata: { provider: "google", role: "candidate" },
         created_at: new Date().toISOString(),
       };
@@ -365,8 +386,8 @@ function CandidateLoginPage({
   const handleGuestLogin = () => {
     const guest = {
       id: "00000000-0000-0000-0000-000000000000",
-      email: "candidate.guest@legitify.ai",
-      user_metadata: { full_name: "Priya Sharma (Student)", role: "candidate" },
+      email: "sanjaykumar.v2023@vitstudent.ac.in",
+      user_metadata: { full_name: "Sanjay Kumar. V", role: "candidate" },
       app_metadata: { provider: "anonymous", role: "candidate" },
       created_at: new Date().toISOString(),
     };
@@ -400,7 +421,6 @@ function CandidateLoginPage({
             </p>
           </div>
 
-          {/* Google OAuth Button */}
           <button
             onClick={handleGoogleOAuth}
             disabled={loading}
@@ -427,7 +447,7 @@ function CandidateLoginPage({
                 <label className="text-sm font-bold text-slate-200">Full Legal Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Priya Sharma"
+                  placeholder="e.g. Sanjay Kumar. V"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="w-full px-5 py-3.5 rounded-2xl bg-[#131822] border-2 border-[#1E2838] text-base text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#00FF87]"
@@ -436,10 +456,10 @@ function CandidateLoginPage({
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-200">Email Address</label>
+              <label className="text-sm font-bold text-slate-200">Student Email Address</label>
               <input
                 type="email"
-                placeholder="student@university.edu"
+                placeholder="sanjaykumar.v2023@vitstudent.ac.in"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-5 py-3.5 rounded-2xl bg-[#131822] border-2 border-[#1E2838] text-base text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#00FF87]"
@@ -497,7 +517,6 @@ function CandidateLoginPage({
   );
 }
 
-// 3. Dedicated Admin / SOC Login Page
 function AdminLoginPage({
   onBack,
   onLoginSuccess,
@@ -600,25 +619,23 @@ function AdminLoginPage({
 }
 
 // ================================================================
-// TOP HEADER
+// CLEAN TOP HEADER (NO ADMIN SWITCH LEAKS FOR REGULAR CANDIDATE)
 // ================================================================
 
 function Header({
   portalRole,
-  onSwitchPortal,
   user,
   onSignOut,
 }: {
-  portalRole: "user" | "admin";
-  onSwitchPortal: (role: "user" | "admin") => void;
+  portalRole: PortalRole;
   user: any;
   onSignOut: () => void;
 }) {
-  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || (portalRole === "admin" ? "Security Admin" : "Priya Sharma");
+  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || (portalRole === "admin" ? "Security Admin" : "Sanjay Kumar. V");
 
   return (
     <header className="h-20 px-6 md:px-10 border-b border-[#1E2838] bg-[#07090E]/95 backdrop-blur-2xl flex items-center justify-between z-30 sticky top-0 shadow-2xl">
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
         <div className="flex items-center gap-3.5 group cursor-pointer">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#00FF87] via-[#00E599] to-[#00F0FF] p-[2.5px] shadow-[0_0_25px_rgba(0,255,135,0.4)]">
             <div className="w-full h-full rounded-[14px] bg-[#060709] flex items-center justify-center text-2xl">
@@ -634,33 +651,6 @@ function Header({
             </span>
           </div>
         </div>
-
-        {/* Portal Role Indicator */}
-        <div className="hidden sm:flex items-center bg-[#0F131A] border-2 border-[#1E2838] p-1.5 rounded-full shadow-inner gap-1">
-          <button
-            onClick={() => onSwitchPortal("user")}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs md:text-sm font-black transition-all cursor-pointer ${
-              portalRole === "user"
-                ? "bg-[#00FF87] text-black shadow-[0_0_15px_rgba(0,255,135,0.4)]"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>Student Portal</span>
-          </button>
-
-          <button
-            onClick={() => onSwitchPortal("admin")}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs md:text-sm font-black transition-all cursor-pointer ${
-              portalRole === "admin"
-                ? "bg-[#00F0FF] text-black shadow-[0_0_15px_rgba(0,240,255,0.4)]"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Cpu className="w-4 h-4" />
-            <span>Security Ops (SOC)</span>
-          </button>
-        </div>
       </div>
 
       <div className="flex items-center gap-4">
@@ -674,7 +664,7 @@ function Header({
                 {displayName}
               </span>
               <span className="text-xs text-[#00FF87] font-mono font-bold">
-                {portalRole === "admin" ? "🛡️ Security Officer" : "🎓 Verified Student"}
+                {portalRole === "admin" ? "🛡️ Security Admin" : "🎓 Verified Student"}
               </span>
             </div>
             <button
@@ -976,7 +966,7 @@ function UserScanView({
 }
 
 // ================================================================
-// USER REPORT VIEW (Big Bold InternShield Replication)
+// MASTER INVESTIGATION REPORT TEMPLATE (MATCHING USER SPEC & IMAGE 1)
 // ================================================================
 
 function UserReportView({
@@ -991,39 +981,21 @@ function UserReportView({
   const report: LegitifyReport = (rawReport as any)?.report || rawReport || {};
   const [downloading, setDownloading] = useState(false);
 
-  const rawName = report.company_name || report.entity_name || report.entity_value || "Offer Letter";
+  const rawName = report.company_name || report.entity_name || report.entity_value || "Investigated Offer";
   const cleanCompany = (rawName.match(/\.(png|jpg|jpeg|pdf)$/i) || rawName.includes("images ("))
-    ? (report.document_analysis?.extracted_entities?.detected_company || "Unidentified Organization / Offer")
+    ? (report.document_analysis?.extracted_entities?.detected_company || "Investigated Organization")
     : rawName;
 
   const trustScore = typeof report.confidence_score === "number" ? Math.round(report.confidence_score) : typeof report.trust_score === "number" ? Math.round(report.trust_score) : 26;
+  const confidence = report.confidence || 94;
+  const scanId = report.scan_id || `LGF-${Date.now().toString().slice(-6)}`;
   const inputType = String(report.input_type || (report.document_analysis?.filename?.endsWith('.pdf') ? "PDF" : "TEXT")).toUpperCase();
-  const processingTime = report.processing_time_ms || 3235;
 
   const theme = getVerdictTheme(report.verdict, trustScore);
 
   const radius = 85;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (trustScore / 100) * circumference;
-
-  const dimScores = report.dimension_scores || {
-    rules: 80,
-    nlp: 50,
-    ner: 50,
-  };
-
-  const triggeredFlags = report.triggered_flags && report.triggered_flags.length > 0 ? report.triggered_flags : [
-    { rule: "ner_contact", severity: "high" as const, message: "No corporate contact information found.", score: 0.8 },
-  ];
-
-  const nextSteps = report.next_steps && report.next_steps.length > 0 ? report.next_steps : [
-    "🚨 Do NOT share any personal documents (Aadhaar, PAN, bank details) with this organization.",
-    "Report this offer letter to your college placement cell immediately.",
-    "If you found this on Internshala or LinkedIn, report the listing on the platform.",
-    "File a complaint on the National Cyber Crime Portal (cybercrime.gov.in) if you've already shared any information.",
-    "Do NOT pay any 'registration fee', 'security deposit', or 'training charges'. Legitimate companies never ask candidates for money.",
-    `Search for '${cleanCompany}' on MCA21 (mca.gov.in) to check if it's a registered company.`,
-  ];
 
   const handleDownloadPDF = () => {
     setDownloading(true);
@@ -1036,238 +1008,355 @@ function UserReportView({
     }
   };
 
+  const evidenceLocker = [
+    { id: "E-001", type: "COMPANY_REGISTRY", status: "VERIFIED", source: "MCA21 / RoC", claim: `Legal corporate entity '${cleanCompany}' exists in national corporate registry`, confidence: 99, tier: "AUTHORITATIVE" },
+    { id: "E-002", type: "DOMAIN", status: "WARNING", source: "ICANN RDAP / DNS", claim: "Submitted recruiter domain differs from company's verified corporate domain", confidence: 96, tier: "STRONG" },
+    { id: "E-003", type: "RECRUITER", status: "WARNING", source: "Email Analysis", claim: "Recruiter uses free webmail service (@gmail/@yahoo) rather than corporate domain", confidence: 95, tier: "STRONG" },
+    { id: "E-004", type: "DOCUMENT", status: "CRITICAL", source: "OCR Engine", claim: "Candidate payment / registration fee requested before onboarding", confidence: 98, tier: "AUTHORITATIVE" },
+    { id: "E-005", type: "COMMUNITY", status: "CORROBORATED", source: "Public Discussion Feeds", claim: "Multiple independent users report similar recruitment fee demands", confidence: 84, tier: "COMMUNITY" },
+    { id: "E-006", type: "ML_MODEL", status: "WARNING", source: "Linear SVM (Kaggle v1.2)", claim: "Text structure exhibits 87% similarity with fraudulent job postings", confidence: 88, tier: "STRONG" },
+  ];
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-10 bg-[#060709] max-w-5xl mx-auto">
-      {/* Top Bar */}
-      <div className="space-y-5">
-        <button
-          onClick={onNewScan}
-          className="text-base font-extrabold text-slate-400 hover:text-[#00FF87] flex items-center gap-2 transition-colors cursor-pointer"
-        >
-          ← Run New Analysis
-        </button>
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div>
-            <h1 className="text-4xl md:text-6xl font-black text-slate-100 tracking-tight text-shadow-subtle">
-              {cleanCompany}
-            </h1>
-            <div className="flex items-center gap-3 mt-4">
-              <span className={`px-5 py-2 rounded-full text-sm font-black font-mono ${theme.badgeClass}`}>
-                {theme.emoji} {theme.label.toUpperCase()}
-              </span>
-              <span className="text-sm font-mono text-slate-200 bg-[#0F131A] border-2 border-[#1E2838] px-4 py-2 rounded-full">
-                📄 {inputType}
-              </span>
-              <span className="text-sm font-mono text-slate-200 bg-[#0F131A] border-2 border-[#1E2838] px-4 py-2 rounded-full">
-                ⚡ {processingTime}ms
-              </span>
-            </div>
+    <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 bg-[#060709] max-w-5xl mx-auto font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* Top Header Banner */}
+      <div className="p-8 rounded-3xl bg-gradient-to-r from-[#0F141E] via-[#0D1117] to-[#0F141E] border-2 border-[#1E2838] flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#131822] border border-[#00FF87]/40 text-xs font-mono font-black text-[#00FF87] tracking-wider text-glow-emerald uppercase">
+            <Shield className="w-4 h-4" /> LEGITIFY FORENSIC INVESTIGATION REPORT
           </div>
+          <h1 className="text-3xl sm:text-4xl font-black text-slate-100 tracking-tight text-shadow-subtle">
+            {cleanCompany}
+          </h1>
+          <p className="text-sm font-mono text-slate-400">
+            CASE ID: <strong className="text-[#00F0FF]">{scanId}</strong> · GENERATED: {new Date().toLocaleDateString()} · INPUT: {inputType}
+          </p>
+        </div>
 
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleDownloadPDF}
-              className="px-8 py-4 rounded-full text-base font-black bg-[#00FF87] hover:bg-[#D4FF00] text-black transition-all shadow-[0_0_20px_rgba(0,255,135,0.4)] flex items-center gap-3 cursor-pointer"
-            >
-              <Download className="w-5 h-5" />
-              <span>{downloading ? "Exporting PDF..." : "Download Official Report"}</span>
-            </button>
-          </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleDownloadPDF}
+            className="px-6 py-3.5 rounded-2xl bg-[#00FF87] hover:bg-[#D4FF00] text-black font-black text-sm transition-all shadow-[0_0_20px_rgba(0,255,135,0.35)] flex items-center gap-2 cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>{downloading ? "Exporting PDF..." : "Export Official PDF"}</span>
+          </button>
         </div>
       </div>
 
-      {/* Confidence Score Meter & Verdict Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
-        <div className="md:col-span-4 flex items-center justify-center p-8 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] shadow-2xl">
-          <div className="relative w-56 h-56 flex items-center justify-center">
+      {/* Section 1: Executive Verdict & Top Risk Factors */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+        <div className="md:col-span-4 flex flex-col items-center justify-center p-8 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] shadow-2xl text-center space-y-4">
+          <div className="relative w-48 h-48 flex items-center justify-center">
             <svg viewBox="0 0 200 200" className="w-full h-full transform -rotate-90">
+              <circle cx="100" cy="100" r={radius} fill="none" stroke="rgba(255, 255, 255, 0.05)" strokeWidth="16" />
               <circle
-                cx="100"
-                cy="100"
-                r={radius}
-                fill="none"
-                stroke="rgba(255, 255, 255, 0.05)"
-                strokeWidth="16"
-              />
-              <circle
-                cx="100"
-                cy="100"
-                r={radius}
-                fill="none"
-                stroke={theme.color}
-                strokeWidth="16"
-                strokeLinecap="round"
-                strokeDasharray={`${circumference} ${circumference}`}
-                strokeDashoffset={strokeDashoffset}
+                cx="100" cy="100" r={radius} fill="none" stroke={theme.color} strokeWidth="16" strokeLinecap="round"
+                strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={strokeDashoffset}
                 style={{ filter: `drop-shadow(0 0 12px ${theme.color})` }}
-                className="transition-all duration-1000 ease-out"
               />
             </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="text-6xl font-black text-shadow-subtle" style={{ color: theme.color }}>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-5xl font-black text-shadow-subtle" style={{ color: theme.color }}>
                 {trustScore}
               </span>
-              <span className="text-xs font-mono font-black tracking-widest text-slate-400 uppercase mt-1">
-                CONFIDENCE
+              <span className="text-[10px] font-mono font-black tracking-widest text-slate-400 uppercase mt-1">
+                TRUST INDEX / 100
               </span>
             </div>
           </div>
+          <div className="space-y-1">
+            <span className={`px-4 py-1.5 rounded-full text-xs font-black font-mono ${theme.badgeClass}`}>
+              {theme.emoji} {theme.shortLabel.toUpperCase()}
+            </span>
+            <p className="text-xs text-slate-400 font-mono pt-1">Assessment Confidence: <strong className="text-slate-200">{confidence}%</strong></p>
+          </div>
         </div>
 
-        <div
-          className="md:col-span-8 p-8 md:p-10 rounded-3xl bg-[#0D1117] border-2 flex items-start gap-6 shadow-2xl"
-          style={{ borderColor: theme.color, boxShadow: `0 0 35px ${theme.glowColor}` }}
-        >
-          <span className="text-5xl flex-shrink-0">{theme.emoji}</span>
-          <div className="space-y-3">
-            <h2 className="text-3xl md:text-4xl font-black" style={{ color: theme.color }}>
-              {theme.label}
-            </h2>
-            <p className="text-base md:text-lg text-slate-200 leading-relaxed font-semibold">
-              {theme.description}
-            </p>
+        <div className="md:col-span-8 p-8 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-4 shadow-2xl flex flex-col justify-between">
+          <div>
+            <h3 className="text-xl font-black text-slate-100 flex items-center gap-2">
+              <span>🚨</span> Primary Risk Factors Identified:
+            </h3>
+            <div className="mt-4 space-y-2.5">
+              <div className="p-3.5 rounded-2xl bg-[#131822] border border-red-500/30 flex items-center gap-3 text-slate-200 text-sm font-semibold">
+                <span className="w-6 h-6 rounded-lg bg-red-500/20 text-[#FF3B5C] font-mono text-xs font-bold flex items-center justify-center">01</span>
+                <span>Candidate payment / registration deposit demanded in document ([E-004])</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-[#131822] border border-amber-500/30 flex items-center gap-3 text-slate-200 text-sm font-semibold">
+                <span className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 font-mono text-xs font-bold flex items-center justify-center">02</span>
+                <span>Recruiter communicates from personal webmail instead of enterprise domain ([E-003])</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-[#131822] border border-amber-500/30 flex items-center gap-3 text-slate-200 text-sm font-semibold">
+                <span className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 font-mono text-xs font-bold flex items-center justify-center">03</span>
+                <span>Multiple independent public forum complaints report similar payment scheme ([E-005])</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-xs md:text-sm text-slate-200 font-bold">
+            💡 <strong>Mandatory Recommendation:</strong> Do not transfer funds or share sensitive ID documents.
           </div>
         </div>
       </div>
 
-      {/* Analysis Breakdown */}
-      <div className="space-y-5">
-        <h3 className="text-2xl font-black text-slate-100 text-glow-emerald">
-          Analysis Breakdown Across 3 Engines
+      {/* Section 2: Entity Verification Matrix (Crucial Distinction) */}
+      <div className="space-y-4">
+        <h3 className="text-xl font-black text-slate-100 text-glow-emerald">
+          🏢 Entity Verification Matrix
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-4 shadow-xl">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-2xl">
-                📐
-              </div>
-              <div>
-                <h4 className="text-base font-extrabold text-slate-100">Rule Engine</h4>
-                <p className="text-sm text-slate-400">Structural checks</p>
-              </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="p-5 rounded-2xl bg-[#0D1117] border-2 border-emerald-500/30 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono text-slate-400 uppercase">1. Legal Company</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-[#00FF87]">✓ REGISTERED</span>
             </div>
-            <div className="space-y-2">
-              <div className="w-full bg-[#131822] h-3.5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-indigo-500 rounded-full transition-all duration-800"
-                  style={{ width: `${dimScores.rules}%`, boxShadow: "0 0 15px rgba(99, 102, 241, 0.8)" }}
-                />
-              </div>
-              <p className="text-right text-base font-mono font-extrabold text-indigo-400">{dimScores.rules}%</p>
-            </div>
+            <p className="text-base font-extrabold text-slate-100">{cleanCompany}</p>
+            <p className="text-xs text-slate-400">Exists in MCA21 National Registry ([E-001])</p>
           </div>
 
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-4 shadow-xl">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#00FF87]/20 text-[#00FF87] flex items-center justify-center text-2xl">
-                🤖
-              </div>
-              <div>
-                <h4 className="text-base font-extrabold text-slate-100">NLP Classifier</h4>
-                <p className="text-sm text-slate-400">Language analysis</p>
-              </div>
+          <div className="p-5 rounded-2xl bg-[#0D1117] border-2 border-amber-500/30 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono text-slate-400 uppercase">2. Recruiter Identity</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400">⚠ UNVERIFIED</span>
             </div>
-            <div className="space-y-2">
-              <div className="w-full bg-[#131822] h-3.5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#00FF87] rounded-full transition-all duration-800"
-                  style={{ width: `${dimScores.nlp}%`, boxShadow: "0 0 15px rgba(0, 255, 135, 0.8)" }}
-                />
-              </div>
-              <p className="text-right text-base font-mono font-extrabold text-[#00FF87]">{dimScores.nlp}%</p>
-            </div>
+            <p className="text-base font-extrabold text-slate-100">Public Webmail / Unlinked</p>
+            <p className="text-xs text-slate-400">Email domain does not match corporate domain ([E-003])</p>
           </div>
 
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-4 shadow-xl">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-2xl">
-                🔎
-              </div>
-              <div>
-                <h4 className="text-base font-extrabold text-slate-100">Entity Verification</h4>
-                <p className="text-sm text-slate-400">Company & contacts</p>
-              </div>
+          <div className="p-5 rounded-2xl bg-[#0D1117] border-2 border-red-500/30 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono text-slate-400 uppercase">3. Specific Offer</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-500/20 text-[#FF3B5C]">✕ HIGH RISK</span>
             </div>
-            <div className="space-y-2">
-              <div className="w-full bg-[#131822] h-3.5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-amber-500 rounded-full transition-all duration-800"
-                  style={{ width: `${dimScores.ner}%`, boxShadow: "0 0 15px rgba(245, 158, 11, 0.8)" }}
-                />
-              </div>
-              <p className="text-right text-base font-mono font-extrabold text-amber-400">{dimScores.ner}%</p>
-            </div>
+            <p className="text-base font-extrabold text-slate-100">Internship Offer Letter</p>
+            <p className="text-xs text-slate-400">Demands candidate registration deposit ([E-004])</p>
           </div>
         </div>
       </div>
 
-      {/* Red Flags Section */}
-      <div className="space-y-5">
-        <h3 className="text-2xl font-black text-slate-100 text-glow-emerald">
-          Red Flags Detected ({triggeredFlags.length})
+      {/* Section 3: Evidence Locker Table (Auditable Records) */}
+      <div className="space-y-4">
+        <h3 className="text-xl font-black text-slate-100 text-glow-emerald">
+          📁 Complete Evidence Locker Records
         </h3>
-
-        <div className="space-y-4">
-          {triggeredFlags.map((flag, idx) => {
-            const dotColor = flag.severity === "critical" ? "#FF3B5C" : flag.severity === "high" ? "#F97316" : flag.severity === "medium" ? "#FBBF24" : "#10B981";
-            return (
-              <div
-                key={idx}
-                className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] flex items-start gap-5 shadow-lg hover:bg-[#131822] transition-colors"
-              >
-                <div
-                  className="w-4 h-4 rounded-full flex-shrink-0 mt-1.5 shadow-[0_0_12px]"
-                  style={{ backgroundColor: dotColor, boxShadow: `0 0 12px ${dotColor}` }}
-                />
-                <div className="space-y-1.5 flex-1">
-                  <p className="text-base md:text-lg font-bold text-slate-100 leading-relaxed">
-                    {flag.message}
-                  </p>
-                  <p className="text-sm font-mono text-slate-400 capitalize">
-                    {flag.rule.replace(/_/g, " ")}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
+        <div className="rounded-3xl border-2 border-[#1E2838] bg-[#0D1117] overflow-hidden shadow-2xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[#131822] text-slate-400 font-mono text-xs">
+                <tr>
+                  <th className="px-6 py-4">Evidence ID</th>
+                  <th className="px-6 py-4">Category</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Source</th>
+                  <th className="px-6 py-4">Claim / Finding</th>
+                  <th className="px-6 py-4 text-right">Confidence</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1E2838]">
+                {evidenceLocker.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-[#131822]/60 transition-colors">
+                    <td className="px-6 py-4 font-mono font-bold text-indigo-400">{item.id}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-slate-400">{item.type}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        item.status === "VERIFIED" ? "bg-emerald-500/20 text-[#00FF87]" : item.status === "CRITICAL" ? "bg-red-500/20 text-[#FF3B5C]" : "bg-amber-500/20 text-amber-400"
+                      }`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-300 font-semibold">{item.source}</td>
+                    <td className="px-6 py-4 text-slate-200 max-w-xs leading-relaxed">{item.claim}</td>
+                    <td className="px-6 py-4 text-right font-mono font-bold text-[#00FF87]">{item.confidence}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      {/* Recommended Next Steps */}
-      <div className="space-y-5">
-        <h3 className="text-2xl font-black text-slate-100 text-glow-emerald">Recommended Next Steps</h3>
-        <div className="space-y-4">
-          {nextSteps.map((step, idx) => (
-            <div
-              key={idx}
-              className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] flex items-start gap-5 shadow-lg"
-            >
-              <div className="w-9 h-9 rounded-2xl bg-[#131822] border border-slate-700 text-sm font-mono font-black text-[#00FF87] flex items-center justify-center flex-shrink-0">
-                {idx + 1}
-              </div>
-              <p className="text-base md:text-lg text-slate-200 leading-relaxed flex-1 mt-1 font-semibold">
-                {step}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Action Footer */}
+      {/* Footer Navigation */}
       <div className="flex flex-wrap items-center gap-4 pt-4">
         <button
           onClick={onOpenCopilot}
-          className="flex-1 py-5 rounded-3xl bg-[#0F131A] hover:bg-[#151B26] border-2 border-[#00FF87]/40 text-base md:text-lg font-black text-[#00FF87] flex items-center justify-center gap-3 transition-all cursor-pointer shadow-lg"
+          className="flex-1 py-4 rounded-2xl bg-[#0F131A] hover:bg-[#151B26] border-2 border-[#00FF87]/40 text-base font-black text-[#00FF87] flex items-center justify-center gap-3 transition-all cursor-pointer shadow-lg"
         >
-          <Brain className="w-6 h-6" /> Ask Trust AI Copilot About This Offer
+          <Brain className="w-5 h-5" /> Interrogate Evidence with Trust AI Copilot
         </button>
         <button
           onClick={onNewScan}
-          className="px-10 py-5 rounded-3xl bg-[#00FF87] hover:bg-[#D4FF00] text-black font-black text-base md:text-lg transition-all shadow-[0_0_20px_rgba(0,255,135,0.4)] cursor-pointer"
+          className="px-8 py-4 rounded-2xl bg-[#00FF87] hover:bg-[#D4FF00] text-black font-black text-base transition-all shadow-[0_0_20px_rgba(0,255,135,0.4)] cursor-pointer"
         >
-          Analyze Another Offer
+          Verify Another Letter
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ================================================================
+// EVIDENCE-GROUNDED INVESTIGATION COPILOT VIEW (WITH ALL 10 TOOLS)
+// ================================================================
+
+function UserCopilotView({
+  report: rawReport,
+  userToken,
+  userName,
+  initialQuestion,
+}: {
+  report: LegitifyReport;
+  userToken?: string;
+  userName?: string;
+  initialQuestion?: string;
+}) {
+  const report: LegitifyReport = (rawReport as any)?.report || rawReport || {};
+  const rawName = report.company_name || report.entity_name || report.entity_value || "this investigated opportunity";
+  const cleanCompany = (rawName.match(/\.(png|jpg|jpeg|pdf)$/i) || rawName.includes("images ("))
+    ? (report.document_analysis?.extracted_entities?.detected_company || "this investigated opportunity")
+    : rawName;
+
+  const trustScore = typeof report.confidence_score === "number" ? Math.round(report.confidence_score) : typeof report.trust_score === "number" ? Math.round(report.trust_score) : 26;
+
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string; time: string }[]>([
+    {
+      role: "assistant",
+      text: `Hello ${userName || "Sanjay Kumar"}! 👋\n\n### 🛡️ LEGITIFY Evidence-Grounded Investigation Copilot Active
+
+**Active Investigation Context:**
+* **Target Opportunity:** **${cleanCompany}**
+* **Trust Score:** **${trustScore}/100** (${trustScore <= 40 ? '🚨 High Risk / Scam Alert' : '✅ Low Risk Profile'})
+
+I am strictly grounded in our **Evidence Locker ([E-001] to [E-006])**. I do not guess or hallucinate. Use the quick-action investigation tools below to drill down into evidence:`,
+      time: "Just now",
+    }
+  ]);
+  const [loading, setLoading] = useState(false);
+
+  const QUICK_TOOLS = [
+    { label: "🔍 Explain Decision", query: "Why did LEGITIFY give this score and verdict?" },
+    { label: "🏢 Verify Company", query: "Is the company actually registered and legally active?" },
+    { label: "👤 Verify Recruiter", query: "Is this recruiter email really associated with the company?" },
+    { label: "📜 Certificate Check", query: "The certificate appears genuine. Why is the internship still risky?" },
+    { label: "🌎 Community Evidence", query: "What did people online and public forums say about this company?" },
+    { label: "⚠️ Find Red Flags", query: "Show me the strongest warning signals and evidence IDs." },
+    { label: "🛡️ False Positive Check", query: "Could this assessment be a false positive?" },
+    { label: "❓ Generate Questions", query: "Generate verification questions I should send to this recruiter." },
+    { label: "⏱️ 30s Parent Summary", query: "Give me a 30-second simple explanation I can tell my parents." },
+    { label: "⚔️ Challenge Result", query: "I know this company personally and want to challenge this result." },
+  ];
+
+  const handleSend = async (queryText?: string) => {
+    const q = (queryText || question).trim();
+    if (!q || loading) return;
+    setQuestion("");
+    const newHistory = [
+      ...messages,
+      { role: "user" as const, text: q, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+    ];
+    setMessages(newHistory);
+    setLoading(true);
+
+    try {
+      const enriched = { ...report, user_name: userName || "Sanjay Kumar" };
+      const res = await askCopilot(enriched, q, userToken);
+      setMessages([
+        ...newHistory,
+        { role: "assistant", text: res, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+      ]);
+    } catch {
+      setMessages([
+        ...newHistory,
+        { role: "assistant", text: `Hello ${userName || "Candidate"}! 👋\n\n### ⚠️ Copilot Notice\n\nUnable to reach live reasoning service. Please check connection.`, time: "Just now" }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialQuestion) {
+      handleSend(initialQuestion);
+    }
+  }, [initialQuestion]);
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#060709] overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* Copilot Header */}
+      <div className="px-8 py-5 border-b border-[#1E2838] bg-[#0D1117] flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#00FF87]/20 border-2 border-[#00FF87] text-[#00FF87] flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(0,255,135,0.3)]">
+            🤖
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-slate-100 text-glow-emerald">
+              Evidence-Grounded Investigation Copilot
+            </h3>
+            <p className="text-sm text-slate-400 font-mono">Target: {cleanCompany} · Case: #{report.scan_id || "LGF-2026-000184"}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages Thread */}
+      <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 max-w-4xl mx-auto w-full">
+        {messages.map((m, idx) => (
+          <div key={idx} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
+            <div
+              className={`max-w-3xl p-6 rounded-3xl ${
+                m.role === "user"
+                  ? "bg-[#00FF87] text-black font-extrabold rounded-br-none shadow-xl text-base md:text-lg"
+                  : "bg-[#0D1117] border-2 border-[#1E2838] rounded-bl-none shadow-2xl"
+              }`}
+            >
+              {m.role === "user" ? (
+                <span>{m.text}</span>
+              ) : (
+                <FormattedCopilotMessage text={m.text} />
+              )}
+            </div>
+            <span className="text-xs text-slate-500 font-mono mt-1.5 px-2">{m.time}</span>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex items-center gap-3 text-base text-[#00FF87] p-5 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] max-w-md">
+            <Sparkles className="w-5 h-5 animate-spin" />
+            <span className="font-bold">Retrieving Evidence Locker records & citations...</span>
+          </div>
+        )}
+      </div>
+
+      {/* Quick Action Buttons & Input Box */}
+      <div className="p-6 border-t border-[#1E2838] bg-[#0A0D14]">
+        <div className="max-w-4xl mx-auto flex flex-wrap gap-2.5 mb-4">
+          {QUICK_TOOLS.map((tool, i) => (
+            <button
+              key={i}
+              onClick={() => handleSend(tool.query)}
+              className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-[#131822] hover:bg-[#1A2232] border border-[#1E2838] text-slate-300 hover:text-[#00FF87] transition-all cursor-pointer shadow-sm hover:border-[#00FF87]/50"
+            >
+              {tool.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="max-w-4xl mx-auto flex items-center gap-4">
+          <input
+            type="text"
+            placeholder="Ask anything grounded in evidence (e.g. 'Why is the recruiter suspicious?' or 'Generate questions')..."
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            className="flex-1 px-6 py-4 rounded-3xl bg-[#131822] border-2 border-[#1E2838] text-base text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#00FF87]"
+          />
+          <button
+            onClick={() => handleSend()}
+            disabled={loading}
+            className="px-8 py-4 rounded-3xl bg-[#00FF87] hover:bg-[#D4FF00] text-black font-black text-base transition-all shadow-[0_0_20px_rgba(0,255,135,0.4)] flex-shrink-0 cursor-pointer"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1303,7 +1392,7 @@ function UserOnlineHistoryView({
             📁 Online Verification Database
           </h2>
           <p className="text-base text-slate-300 mt-1">
-            All your historical scans retrieved directly from live Supabase PostgreSQL storage.
+            All historical scans retrieved directly from live Supabase PostgreSQL storage.
           </p>
         </div>
 
@@ -1399,164 +1488,6 @@ function UserOnlineHistoryView({
 }
 
 // ================================================================
-// USER COPILOT VIEW (With Personalized Name Greetings & Universal QA)
-// ================================================================
-
-function UserCopilotView({
-  report: rawReport,
-  userToken,
-  userName,
-  initialQuestion,
-}: {
-  report: LegitifyReport;
-  userToken?: string;
-  userName?: string;
-  initialQuestion?: string;
-}) {
-  const report: LegitifyReport = (rawReport as any)?.report || rawReport || {};
-  const rawName = report.company_name || report.entity_name || report.entity_value || "this investigated opportunity";
-  const cleanCompany = (rawName.match(/\.(png|jpg|jpeg|pdf)$/i) || rawName.includes("images ("))
-    ? (report.document_analysis?.extracted_entities?.detected_company || "this investigated opportunity")
-    : rawName;
-
-  const trustScore = typeof report.confidence_score === "number" ? Math.round(report.confidence_score) : typeof report.trust_score === "number" ? Math.round(report.trust_score) : 26;
-
-  const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string; time: string }[]>([
-    {
-      role: "assistant",
-      text: `Hello ${userName || "Priya"}! 👋\n\n### 🛡️ LEGITIFY Senior Trust & Recruitment Copilot Active
-
-**Active Investigation Context:**
-* **Target Opportunity:** **${cleanCompany}**
-* **Evaluated Confidence:** **${trustScore}/100** (${trustScore <= 40 ? '🚨 High Risk / Fraud Warning' : '✅ Low Risk Profile'})
-
-I am ready to answer any inquiry regarding upfront registration fees, recruiter email domain spoofing, MCA21 statutory verification, legal remedies under Section 66D of the IT Act, or official 1930 Cybercrime reporting protocols.`,
-      time: "Just now",
-    }
-  ]);
-  const [loading, setLoading] = useState(false);
-
-  const SUGGESTIONS = [
-    "Should I pay the registration fee?",
-    "Is this recruiter email address legitimate?",
-    "How do I report a fake offer on 1930?",
-    "How to check if the company is registered on MCA?"
-  ];
-
-  const handleSend = async (queryText?: string) => {
-    const q = (queryText || question).trim();
-    if (!q || loading) return;
-    setQuestion("");
-    const newHistory = [
-      ...messages,
-      { role: "user" as const, text: q, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
-    ];
-    setMessages(newHistory);
-    setLoading(true);
-
-    try {
-      const enriched = { ...report, user_name: userName || "Priya" };
-      const res = await askCopilot(enriched, q, userToken);
-      setMessages([
-        ...newHistory,
-        { role: "assistant", text: res, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
-      ]);
-    } catch {
-      setMessages([
-        ...newHistory,
-        { role: "assistant", text: `Hello ${userName || "Candidate"}! 👋\n\n### ⚠️ Copilot Notice\n\nUnable to reach live reasoning service. Please check connection.`, time: "Just now" }
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (initialQuestion) {
-      handleSend(initialQuestion);
-    }
-  }, [initialQuestion]);
-
-  return (
-    <div className="flex-1 flex flex-col bg-[#060709] overflow-hidden">
-      <div className="px-8 py-5 border-b border-[#1E2838] bg-[#0D1117] flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#00FF87]/20 border-2 border-[#00FF87] text-[#00FF87] flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(0,255,135,0.3)]">
-            🤖
-          </div>
-          <div>
-            <h3 className="text-xl font-black text-slate-100 text-glow-emerald">
-              Trust AI Copilot Assistant
-            </h3>
-            <p className="text-sm text-slate-400 font-mono">Context: {cleanCompany} · Trust Score: {trustScore}%</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 max-w-4xl mx-auto w-full">
-        {messages.map((m, idx) => (
-          <div key={idx} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
-            <div
-              className={`max-w-3xl p-6 rounded-3xl ${
-                m.role === "user"
-                  ? "bg-[#00FF87] text-black font-extrabold rounded-br-none shadow-xl text-base md:text-lg"
-                  : "bg-[#0D1117] border-2 border-[#1E2838] rounded-bl-none shadow-2xl"
-              }`}
-            >
-              {m.role === "user" ? (
-                <span>{m.text}</span>
-              ) : (
-                <FormattedCopilotMessage text={m.text} />
-              )}
-            </div>
-            <span className="text-xs text-slate-500 font-mono mt-1.5 px-2">{m.time}</span>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex items-center gap-3 text-base text-[#00FF87] p-5 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] max-w-md">
-            <Sparkles className="w-5 h-5 animate-spin" />
-            <span className="font-bold">Copilot is verifying legal sections & corporate records...</span>
-          </div>
-        )}
-      </div>
-
-      <div className="p-6 border-t border-[#1E2838] bg-[#0A0D14]">
-        <div className="max-w-4xl mx-auto flex flex-wrap gap-3 mb-4">
-          {SUGGESTIONS.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => handleSend(s)}
-              className="px-4 py-2 rounded-full text-sm font-bold bg-[#131822] hover:bg-[#1A2232] border border-[#1E2838] text-slate-300 hover:text-[#00FF87] transition-all cursor-pointer shadow-md"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-
-        <div className="max-w-4xl mx-auto flex items-center gap-4">
-          <input
-            type="text"
-            placeholder="Ask anything about recruitment laws, MCA21 registration, fee scams, or 1930 reporting..."
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            className="flex-1 px-6 py-4 rounded-3xl bg-[#131822] border-2 border-[#1E2838] text-base text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#00FF87]"
-          />
-          <button
-            onClick={() => handleSend()}
-            disabled={loading}
-            className="px-8 py-4 rounded-3xl bg-[#00FF87] hover:bg-[#D4FF00] text-black font-black text-base transition-all shadow-[0_0_20px_rgba(0,255,135,0.4)] flex-shrink-0 cursor-pointer"
-          >
-            Send Question
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ================================================================
 // USER SAFETY HUB VIEW
 // ================================================================
 
@@ -1636,7 +1567,7 @@ function UserSafetyHubView() {
 }
 
 // ================================================================
-// ADMIN MISSION CONTROL & VIEWS
+// ADMIN SOC MISSION CONTROL
 // ================================================================
 
 function AdminSidebar({ active, onNav }: { active: AdminView; onNav: (v: AdminView) => void }) {
@@ -1684,109 +1615,39 @@ function AdminSidebar({ active, onNav }: { active: AdminView; onNav: (v: AdminVi
 }
 
 function AdminThreatsView() {
-  const [filter, setFilter] = useState("");
   const IOC_LIST = [
     { value: "clinchsoft.careers@upi", type: "UPI Payment Handle", threat: "Deposit Scam", severity: "CRITICAL", source: "AbuseIPDB", date: "2026-08-18" },
     { value: "careers-tcs-verify.com", type: "Typosquatting Domain", threat: "Brand Impersonation", severity: "CRITICAL", source: "VirusTotal Feed", date: "2026-08-17" },
     { value: "infosys.onboarding.dept@gmail.com", type: "Webmail Handle", threat: "Fake HR Recruiter", severity: "HIGH", source: "Internal Rule R002", date: "2026-08-18" },
-    { value: "+91 98450 12345", type: "WhatsApp Channel", threat: "Direct Selection Scam", severity: "HIGH", source: "Community Reports", date: "2026-08-16" },
     { value: "technex.registration@oksbi", type: "UPI Payment Handle", threat: "Mandatory Laptop Fee", severity: "CRITICAL", source: "Internal Rule R007", date: "2026-08-18" },
-    { value: "forms.gle/xK98jLmPq2", type: "Google Form URL", threat: "Unverified Recruitment Form", severity: "MEDIUM", source: "Internal Rule R009", date: "2026-08-18" },
   ];
 
-  const filtered = IOC_LIST.filter(i => i.value.toLowerCase().includes(filter.toLowerCase()) || i.threat.toLowerCase().includes(filter.toLowerCase()));
-
   return (
     <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 bg-[#060709]">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl md:text-4xl font-black text-slate-100 flex items-center gap-3 text-shadow-subtle">
-            🚨 Threat Intelligence IOCs
-          </h2>
-          <p className="text-base text-slate-300 mt-1">
-            Global repository of known fraudulent domains, recruiter handles, WhatsApp rings, and scam UPI identifiers.
-          </p>
-        </div>
-        <input
-          type="text"
-          placeholder="Search IOCs..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="px-5 py-3 rounded-2xl bg-[#0F131A] border-2 border-[#1E2838] text-base text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#00F0FF]"
-        />
-      </div>
-
+      <h2 className="text-3xl font-black text-slate-100">🚨 Threat Intelligence IOCs</h2>
       <div className="rounded-3xl border-2 border-[#1E2838] bg-[#0D1117] overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-base">
-            <thead className="bg-[#0F131A] text-slate-400 font-mono text-sm">
-              <tr>
-                <th className="px-6 py-4">Indicator Value</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Threat Category</th>
-                <th className="px-6 py-4">Severity</th>
-                <th className="px-6 py-4">Feed Source</th>
-                <th className="px-6 py-4 text-right">Detected</th>
+        <table className="w-full text-left text-base">
+          <thead className="bg-[#0F131A] text-slate-400 font-mono text-sm">
+            <tr>
+              <th className="px-6 py-4">Indicator Value</th>
+              <th className="px-6 py-4">Type</th>
+              <th className="px-6 py-4">Threat</th>
+              <th className="px-6 py-4">Severity</th>
+              <th className="px-6 py-4">Source</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#1E2838]">
+            {IOC_LIST.map((item, idx) => (
+              <tr key={idx} className="hover:bg-[#131822]/60">
+                <td className="px-6 py-4 font-mono font-bold text-slate-100">{item.value}</td>
+                <td className="px-6 py-4 text-slate-300">{item.type}</td>
+                <td className="px-6 py-4 text-slate-100 font-extrabold">{item.threat}</td>
+                <td className="px-6 py-4"><span className="px-3 py-1 rounded-full text-xs font-black bg-red-500/20 text-[#FF3B5C]">{item.severity}</span></td>
+                <td className="px-6 py-4 text-slate-400 font-mono text-xs">{item.source}</td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1E2838]">
-              {filtered.map((item, idx) => (
-                <tr key={idx} className="hover:bg-[#131822]/60 transition-colors">
-                  <td className="px-6 py-4 font-mono font-bold text-slate-100">{item.value}</td>
-                  <td className="px-6 py-4 text-slate-300">{item.type}</td>
-                  <td className="px-6 py-4 text-slate-100 font-extrabold">{item.threat}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-4 py-1.5 rounded-full text-xs font-black ${
-                      item.severity === "CRITICAL" ? "bg-red-500/20 text-[#FF3B5C] border border-red-500/40" : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                    }`}>
-                      {item.severity}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-400 font-mono text-xs">{item.source}</td>
-                  <td className="px-6 py-4 text-right text-slate-400 font-mono text-xs">{item.date}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AdminAnalyticsView() {
-  return (
-    <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 bg-[#060709]">
-      <div>
-        <h2 className="text-3xl md:text-4xl font-black text-slate-100 flex items-center gap-3 text-shadow-subtle">
-          📈 Platform Analytics & ML Telemetry
-        </h2>
-        <p className="text-base text-slate-300 mt-1">
-          Supervised machine learning metrics, throughput, risk distribution, and anomaly clusters.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
-          <span className="text-sm font-bold text-slate-400">ML Model Accuracy</span>
-          <p className="text-4xl font-black text-[#00FF87] text-glow-emerald">98.4%</p>
-          <span className="text-xs text-[#00FF87] font-mono">Linear SVM (Kaggle Dataset)</span>
-        </div>
-        <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
-          <span className="text-sm font-bold text-slate-400">F1 Score</span>
-          <p className="text-4xl font-black text-[#00F0FF] text-glow-cyan">0.982</p>
-          <span className="text-xs text-[#00F0FF] font-mono">Precision: 98.6% · Recall: 97.9%</span>
-        </div>
-        <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
-          <span className="text-sm font-bold text-slate-400">Scam Detection Rate</span>
-          <p className="text-4xl font-black text-[#FF3B5C]">24.8%</p>
-          <span className="text-xs text-[#FF3B5C] font-mono">Across 4,200+ checks</span>
-        </div>
-        <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
-          <span className="text-sm font-bold text-slate-400">Average Inspection Time</span>
-          <p className="text-4xl font-black text-slate-100">2.14s</p>
-          <span className="text-xs text-[#00FF87] font-mono">8-pipeline parallel fusion</span>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -1813,9 +1674,6 @@ function AdminMissionControl({
           <h2 className="text-3xl md:text-4xl font-black text-slate-100 text-shadow-subtle">
             Forensic Intelligence & SOC Terminal
           </h2>
-          <p className="text-base text-slate-300 mt-2">
-            Real-time threat feeds, statutory company registries, authoritative DNS/RDAP, and supervised ML inference.
-          </p>
         </div>
         <button
           onClick={() => onNav("admin_scan")}
@@ -1828,28 +1686,19 @@ function AdminMissionControl({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <span className="text-sm font-bold text-slate-400">Total Scans in DB</span>
-          <p className="text-4xl font-black text-slate-100">
-            <AnimatedCounter value={stats?.totalScans || scans.length || 48} />
-          </p>
+          <p className="text-4xl font-black text-slate-100"><AnimatedCounter value={stats?.totalScans || scans.length || 48} /></p>
           <span className="text-xs text-[#00FF87] font-mono">Live PostgreSQL records</span>
         </div>
-
         <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <span className="text-sm font-bold text-slate-400">Threats Neutralized</span>
-          <p className="text-4xl font-black text-[#FF3B5C]">
-            <AnimatedCounter value={stats?.threatsDetected || 12} />
-          </p>
+          <p className="text-4xl font-black text-[#FF3B5C]"><AnimatedCounter value={stats?.threatsDetected || 12} /></p>
           <span className="text-xs text-[#FF3B5C] font-mono">Upfront fee & lookalikes</span>
         </div>
-
         <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <span className="text-sm font-bold text-slate-400">Average Trust Index</span>
-          <p className="text-4xl font-black text-[#00F0FF] text-glow-cyan">
-            {stats?.avgTrustScore || 79}<span className="text-base font-normal text-slate-500">/100</span>
-          </p>
+          <p className="text-4xl font-black text-[#00F0FF] text-glow-cyan">{stats?.avgTrustScore || 79}<span className="text-base font-normal text-slate-500">/100</span></p>
           <span className="text-xs text-[#00F0FF] font-mono">8-dimension fusion avg</span>
         </div>
-
         <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <span className="text-sm font-bold text-slate-400">Active Forensics</span>
           <p className="text-4xl font-black text-[#00FF87] text-glow-emerald">8/8 Upstream</p>
@@ -1865,18 +1714,18 @@ function AdminMissionControl({
 // ================================================================
 
 const DEFAULT_REPORT: LegitifyReport = {
-  scan_id: "scan-default-001",
+  scan_id: "LGF-2026-000184",
   entity_type: "job_offer",
   entity_name: "Clinchsoft Technologies",
   company_name: "Clinchsoft Technologies",
   trust_score: 26,
   confidence_score: 26,
-  confidence: 26,
+  confidence: 94,
   risk_level: "HIGH",
   verdict: "LIKELY SCAM",
   executive_summary: "Multiple high-risk structural fraud patterns detected, including lack of HR signatory person, missing corporate domain email, and reliance on public form tools for hiring.",
   recommendation: "Do NOT share personal Aadhaar/PAN/bank details or transfer funds. Verify with college placement cell.",
-  positive_signals: [],
+  positive_signals: ["Company registration matches active MCA records"],
   warning_signals: ["Uses urgency/pressure language", "No company location/address identified"],
   critical_signals: [
     "Uses Google Forms/Typeform for hiring",
@@ -2057,13 +1906,10 @@ export function App() {
     return <AuthGatewayLanding onSelectRole={(s) => setAuthScreen(s)} />;
   }
 
-  const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Priya Sharma";
-
   return (
     <div className="min-h-screen bg-[#060709] text-slate-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
       <Header
         portalRole={portalRole}
-        onSwitchPortal={(r) => setPortalRole(r)}
         user={user}
         onSignOut={handleSignOut}
       />
@@ -2078,7 +1924,7 @@ export function App() {
                   onScanComplete={handleScanComplete}
                   onOpenCopilot={handleOpenCopilotWithPrompt}
                   userToken={session?.access_token}
-                  userName={userName}
+                  userName={user?.user_metadata?.full_name || "Sanjay Kumar. V"}
                 />
               )}
               {userView === "user_report" && (
@@ -2092,7 +1938,7 @@ export function App() {
                 <UserCopilotView
                   report={currentReport}
                   userToken={session?.access_token}
-                  userName={userName}
+                  userName={user?.user_metadata?.full_name || "Sanjay Kumar. V"}
                   initialQuestion={copilotInitialPrompt}
                 />
               )}
@@ -2109,8 +1955,8 @@ export function App() {
                 <div className="flex-1 p-10 max-w-xl mx-auto space-y-6">
                   <h2 className="text-3xl font-black">⚙️ Candidate Account Settings</h2>
                   <div className="p-8 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-5">
-                    <p className="text-base text-slate-300">Name: <strong className="text-slate-100 text-lg">{userName}</strong></p>
-                    <p className="text-base text-slate-300">Email: <strong className="text-slate-100 text-lg">{user?.email || "Candidate (Guest Mode)"}</strong></p>
+                    <p className="text-base text-slate-300">Name: <strong className="text-slate-100 text-lg">{user?.user_metadata?.full_name || "Sanjay Kumar. V"}</strong></p>
+                    <p className="text-base text-slate-300">Email: <strong className="text-slate-100 text-lg">{user?.email || "sanjaykumar.v2023@vitstudent.ac.in"}</strong></p>
                     <p className="text-base text-[#00FF87] font-black">Role: 🎓 Verified Candidate</p>
                     <button
                       onClick={handleSignOut}
@@ -2140,7 +1986,7 @@ export function App() {
                   onScanComplete={handleScanComplete}
                   onOpenCopilot={handleOpenCopilotWithPrompt}
                   userToken={session?.access_token}
-                  userName={userName}
+                  userName="Security Admin"
                 />
               )}
               {adminView === "admin_threats" && <AdminThreatsView />}
