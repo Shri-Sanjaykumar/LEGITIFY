@@ -69,7 +69,7 @@ export async function synthesizeWithGemini(
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.6-flash',
       systemInstruction: SYSTEM_PROMPT,
       generationConfig: {
         responseMimeType: 'application/json',
@@ -133,7 +133,7 @@ export async function askReportCopilot(
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.6-flash',
       systemInstruction: 'You are an AI Trust Intelligence Copilot for LEGITIFY. Answer questions strictly based on the provided investigation report without hallucinating external details.',
       generationConfig: { temperature: 0.2 },
     });

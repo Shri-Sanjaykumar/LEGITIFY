@@ -163,7 +163,7 @@ app.get('/', async (req, res) => {
   });
 });
 
-app.get('/api/health', async (req, res) => {
+app.get(['/api/health', '/health'], async (req, res) => {
   let dbStatus = "DISCONNECTED";
   try {
     await supabaseAdmin.from('profiles').select('count').limit(1);
@@ -361,7 +361,7 @@ app.get(['/api/system/status', '/api/providers/status'], async (req, res) => {
   res.json(providerData);
 });
 
-app.get('/api/docs', async (req, res) => {
+app.get(['/api/docs', '/docs'], async (req, res) => {
   let dbStatus = "DISCONNECTED";
   try {
     await supabaseAdmin.from('profiles').select('count').limit(1);
@@ -442,7 +442,7 @@ app.post('/api/ml/predict', (req, res) => {
   }
 });
 
-app.get('/api/ml/metrics', (req, res) => {
+app.get(['/api/ml/metrics', '/ml/metrics'], (req, res) => {
   const metrics = getMLModelMetrics();
   if (req.headers.accept?.includes('text/html')) {
     const html = `<!DOCTYPE html>
@@ -689,9 +689,9 @@ app.post(['/api/scans', '/api/scan'], upload.single('file'), async (req, res) =>
       entityType: entityType as any,
       entityValue,
       contextText,
-      fileBuffer: req.file?.buffer,
-      filename: req.file?.originalname,
-      mimeType: req.file?.mimetype,
+      fileBuffer,
+      filename,
+      mimeType,
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
@@ -848,7 +848,7 @@ app.post(['/api/emails/analyze', '/api/email/verify'], async (req, res) => {
 // ----------------------------------------------------------------------------
 // 7. POST /api/copilot - Interactive Report Copilot
 // ----------------------------------------------------------------------------
-app.post('/api/copilot', async (req, res) => {
+app.post(['/api/copilot', '/copilot'], async (req, res) => {
   try {
     const { question, context = {} } = req.body;
     if (!question) return res.status(400).json({ success: false, error: 'Question is required' });
@@ -877,7 +877,7 @@ app.post('/api/copilot', async (req, res) => {
 // ----------------------------------------------------------------------------
 // 8. Threat Intelligence Endpoint
 // ----------------------------------------------------------------------------
-app.get('/api/threat-intelligence', async (req, res) => {
+app.get(['/api/threat-intelligence', '/threat-intelligence', '/api/threats', '/threats'], async (req, res) => {
   try {
     const { query } = req.query;
     let dbQuery = supabaseAdmin.from('threat_indicators').select('*').limit(50);
@@ -894,7 +894,7 @@ app.get('/api/threat-intelligence', async (req, res) => {
 // ----------------------------------------------------------------------------
 // 9. Analytics Hub
 // ----------------------------------------------------------------------------
-app.get('/api/analytics', async (_req, res) => {
+app.get(['/api/analytics', '/analytics'], async (_req, res) => {
   try {
     const { data: scans } = await supabaseAdmin.from('scans').select('risk_level, trust_score, created_at').limit(100);
     const total = scans?.length || 0;
@@ -918,7 +918,7 @@ app.get('/api/analytics', async (_req, res) => {
 // ----------------------------------------------------------------------------
 // 10. Audit Logs
 // ----------------------------------------------------------------------------
-app.get('/api/audit-logs', async (req, res) => {
+app.get(['/api/audit-logs', '/audit-logs'], async (req, res) => {
   try {
     const { userId } = req.query;
     let query = supabaseAdmin.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(20);
@@ -958,7 +958,7 @@ app.get(['/api/shared-report/:token', '/api/shared-reports/:token', '/api/report
 // ----------------------------------------------------------------------------
 // 12. User Feedback Loop
 // ----------------------------------------------------------------------------
-app.post('/api/feedback', async (req, res) => {
+app.post(['/api/feedback', '/feedback'], async (req, res) => {
   try {
     const { scan_id, user_id, rating, comment } = req.body;
     await supabaseAdmin.from('feedback').insert({
@@ -976,7 +976,7 @@ app.post('/api/feedback', async (req, res) => {
 // ----------------------------------------------------------------------------
 // 13. Resend Email Alert Dispatcher
 // ----------------------------------------------------------------------------
-app.post('/api/notifications/email', async (req, res) => {
+app.post(['/api/notifications/email', '/notifications/email'], async (req, res) => {
   try {
     const { toEmail, recipientName, report } = req.body;
     if (!toEmail || !report) {

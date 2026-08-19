@@ -42,7 +42,7 @@ export async function extractTextFromImage(
       const normalizedMime = isPdf ? 'application/pdf' : (mimeType === 'image/jpg' ? 'image/jpeg' : mimeType);
 
       const response = await client.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3.6-flash',
         contents: [
           {
             role: 'user',
