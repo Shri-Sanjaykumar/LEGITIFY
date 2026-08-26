@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { EvidenceItem } from '../../types';
-import { extractTextFromImage } from '../utils/ocr';
+import { extractTextFromImage, analyzeDocumentDeepForensics } from '../utils/ocr';
 
 const execFileAsync = promisify(execFile);
 
@@ -588,17 +588,39 @@ export function extractDocumentSignals(text: string, filename?: string, mimeType
 
 export async function processDocument(
   fileBuffer: Buffer,
-  filename: string,
-  mimeType: string
+  filename: string = "unnamed_document",
+  mimeType: string = "text/plain"
 ): Promise<DocumentExtractionResult> {
   let text = "";
-  if (mimeType === 'application/pdf' || filename.toLowerCase().endsWith('.pdf')) {
-    text = await extractTextFromPdfBuffer(fileBuffer);
-  } else if (mimeType.startsWith('image/') || filename.match(/\.(png|jpg|jpeg|webp)$/i)) {
-    text = await extractTextFromImageBuffer(fileBuffer, mimeType);
+  let visualForensics: any = undefined;
+
+  const isPdf = mimeType === 'application/pdf' || filename.toLowerCase().endsWith('.pdf') || (fileBuffer.length > 4 && fileBuffer.toString('utf-8', 0, 4) === '%PDF');
+  const isImage = mimeType.startsWith('image/') || !!filename.match(/\.(png|jpe?g|webp|bmp|gif)$/i);
+
+  if (isPdf || isImage) {
+    try {
+      const deepResult = await analyzeDocumentDeepForensics(fileBuffer, isPdf ? 'application/pdf' : mimeType);
+      text = deepResult.raw_text;
+      visualForensics = deepResult.visual_forensics;
+    } catch {}
+
+    if (!text) {
+      if (isPdf) {
+        text = await extractTextFromPdfBuffer(fileBuffer);
+      } else {
+        text = await extractTextFromImageBuffer(fileBuffer, mimeType);
+      }
+    }
   } else {
+    // Plain text / Markdown buffer
     text = fileBuffer.toString('utf-8');
   }
 
-  return extractDocumentSignals(text, filename, mimeType);
+  if (!text || text.trim().length === 0) {
+    text = fileBuffer.toString('utf-8');
+  }
+
+  const result = extractDocumentSignals(text, filename, mimeType);
+  (result as any).visual_forensics = visualForensics;
+  return result;
 }

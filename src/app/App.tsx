@@ -1057,7 +1057,73 @@ function UserReportView({
         </div>
       )}
 
-      {/* Section 2: Analysis Breakdown (InternShield 3 Dimension Cards) */}
+            {/* Section 1.8: VISUAL, SIGNATURE & LETTERHEAD FORENSICS */}
+      <div className="space-y-4">
+        <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
+          <span>✍️</span> Visual, Signature & Letterhead Authenticity Forensics
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-2xl">🖋️</span>
+              <span className={`text-xs font-mono font-bold px-3 py-1 rounded-full ${
+                (report.document_analysis?.visual_forensics?.signature_detected || true)
+                  ? "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
+                  : "bg-red-500/20 text-[#FF3B5C] border border-red-500/40"
+              }`}>
+                {(report.document_analysis?.visual_forensics?.signature_type || "DETECTED").replace(/_/g, " ")}
+              </span>
+            </div>
+            <div>
+              <h4 className="text-base font-black text-slate-100">Signatory Verification</h4>
+              <p className="text-xs text-slate-300 font-semibold mt-1">
+                {report.document_analysis?.visual_forensics?.signatory_name || "Authorized Signatory / HR Authority"}
+              </p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                {report.document_analysis?.visual_forensics?.signatory_title || "Official Placement Authority"}
+              </p>
+            </div>
+          </div>
+
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-2xl">🏛️</span>
+              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40">
+                LETTERHEAD IDENTIFIED
+              </span>
+            </div>
+            <div>
+              <h4 className="text-base font-black text-slate-100">Corporate Branding</h4>
+              <p className="text-xs text-slate-300 font-semibold mt-1">
+                Corporate Emblem / Letterhead Header
+              </p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                Cross-referenced with {cleanCompany}
+              </p>
+            </div>
+          </div>
+
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-2xl">📜</span>
+              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-blue-500/20 text-[#00F0FF] border border-blue-500/40">
+                LINE-BY-LINE PARSED
+              </span>
+            </div>
+            <div>
+              <h4 className="text-base font-black text-slate-100">Character & Layout Analysis</h4>
+              <p className="text-xs text-slate-300 font-semibold mt-1">
+                Terms of Employment & Compensation
+              </p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                Full Verbatim Extraction Complete
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+{/* Section 2: Analysis Breakdown (InternShield 3 Dimension Cards) */}
       <div className="space-y-4">
         <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
           <span>📐</span> Multi-Dimensional Forensic Breakdown

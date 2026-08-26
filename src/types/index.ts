@@ -1,3 +1,14 @@
+export interface VisualForensicsData {
+  signature_detected: boolean;
+  signature_type: "DIGITAL_STAMP" | "HANDWRITTEN_IMAGE" | "PRINTED_NAME" | "ABSENT" | "SUSPICIOUS";
+  signatory_name?: string;
+  signatory_title?: string;
+  official_seal_detected: boolean;
+  letterhead_logo_detected: boolean;
+  font_consistency_score: number; // 0 - 100
+  formatting_anomalies: string[];
+}
+
 export interface DocumentClaim {
   id: string;
   claim_type: "ORGANIZATION" | "RECRUITER" | "CONTACT_EMAIL" | "PHONE" | "WEBSITE_DOMAIN" | "CIN_REGISTRATION" | "ROLE_DESIGNATION" | "STIPEND_COMPENSATION" | "JOINING_DATE" | "LOCATION" | "PAYMENT_REQUIREMENT" | "CERTIFICATE_ID" | "QR_CODE" | "AUTHENTICITY_SIGNAL";
@@ -354,6 +365,7 @@ export interface LegitifyReport {
   };
   certificate_verification?: CertificateVerificationData;
   document_analysis?: {
+    visual_forensics?: VisualForensicsData;
     filename?: string;
     mime_type?: string;
     extracted_entities?: Record<string, any>;
