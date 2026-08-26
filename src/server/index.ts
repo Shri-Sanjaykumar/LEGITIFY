@@ -651,9 +651,21 @@ app.get(['/api/scans', '/api/scan', '/api/scans/history'], async (req, res) => {
   }
 });
 
-app.post(['/api/scans', '/api/scan'], upload.single('file'), async (req, res) => {
+app.post(['/api/scans', '/api/scan', '/scans', '/scan'], upload.single('file'), async (req, res) => {
   try {
     const rawBody = req.body || {};
+
+    let fileBuffer: Buffer | undefined = req.file?.buffer;
+    let filename: string | undefined = req.file?.originalname || rawBody.filename;
+    let mimeType: string | undefined = req.file?.mimetype || rawBody.mimeType || (filename?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+
+    if (!fileBuffer && rawBody.fileBase64) {
+      try {
+        fileBuffer = Buffer.from(rawBody.fileBase64, 'base64');
+      } catch (e) {
+        console.warn('[API] Base64 decode failed:', e);
+      }
+    }
 
     // --- SMART DEFAULTS: never hard-fail on missing fields ---
     const VALID_ENTITY_TYPES = ['company', 'recruiter', 'domain', 'certificate', 'offer', 'document', 'job_offer', 'website'];
@@ -661,7 +673,7 @@ app.post(['/api/scans', '/api/scan'], upload.single('file'), async (req, res) =>
     // Infer entity type from file name or fallback to job_offer
     let entityType = rawBody.entity_type || rawBody.entityType || '';
     if (!VALID_ENTITY_TYPES.includes(entityType)) {
-      const fileName = req.file?.originalname?.toLowerCase() || '';
+      const fileName = filename?.toLowerCase() || '';
       if (fileName.match(/cert(ificate)?/)) entityType = 'certificate';
       else if (fileName.match(/offer|appointment|letter/)) entityType = 'job_offer';
       else if (rawBody.context_text?.length > 20 || rawBody.entity_value?.length > 20) entityType = 'job_offer';
@@ -672,7 +684,7 @@ app.post(['/api/scans', '/api/scan'], upload.single('file'), async (req, res) =>
     const entityValue = (
       rawBody.entity_value ||
       rawBody.entityValue ||
-      req.file?.originalname?.replace(/\.[^.]+$/, '') ||
+      filename?.replace(/\.[^.]+$/, '') ||
       rawBody.context_text?.slice(0, 60)?.trim() ||
       'Uploaded Document'
     ).slice(0, 150); // cap length
