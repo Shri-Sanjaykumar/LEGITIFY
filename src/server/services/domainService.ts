@@ -14,6 +14,7 @@ const MAJOR_TECH_DOMAINS = [
   "tatamotors.com", "goindigo.in", "airindia.com", "spicejet.com", "reliance.com"
 ];
 
+export type DomainData = DomainAnalysisData;
 export interface DomainAnalysisData {
   domain: string;
   has_dns: boolean;
@@ -31,6 +32,8 @@ export interface DomainAnalysisData {
   safe_browsing_threats?: string[];
   lookalike_detected: boolean;
   lookalike_target?: string;
+  reputation_score?: number;
+  threat_status?: string;
 }
 
 export async function analyzeDomain(domainInput: string): Promise<{

@@ -54,6 +54,8 @@ export interface ThreatData {
   count: number;
   max_severity: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   sources_checked: string[];
+  known_threat?: boolean;
+  indicators?: any[];
 }
 
 export async function checkThreatIndicators(

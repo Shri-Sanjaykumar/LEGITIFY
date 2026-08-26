@@ -297,7 +297,7 @@ export async function verifyCompanyRegistry(
   // 3. Fallback: Not Found in Direct Registry (Important: NOT_FOUND != FRAUD)
   evidence.push({
     category: "REGISTRY",
-    evidence_type_category: "UNVERIFIED_CLAIM",
+    evidence_type_category: "UNVERIFIED",
     evidence_type: "MCA_REGISTRY_RECORD_NOT_FOUND",
     source_name: "Ministry of Corporate Affairs (MCA) Index Search",
     title: "No Statutory Registry Record Found in Index",

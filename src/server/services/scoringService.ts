@@ -8,7 +8,7 @@ import { CompanyData } from './companyService';
 import { DomainData } from './domainService';
 import { RecruiterData } from './emailService';
 import { DocumentExtractionResult } from './documentService';
-import { CertificateVerificationResult } from './certificateService';
+import { CertificateVerificationData, CertificateVerificationResult } from './certificateService';
 import { ThreatData } from './threatService';
 import { MLPrediction } from '../ml/fraudClassifier';
 import { CommunitySearchResult } from './publicExperienceService';
@@ -62,6 +62,7 @@ export interface ScoreComponentBreakdown {
 }
 
 export interface DeterministicScoreResult {
+  confidence?: number;
   trust_score: number;
   confidence_score: number;
   risk_level: RiskLevel;
@@ -130,7 +131,7 @@ export function calculateEvidenceCompleteness(inputs: ScoringInputs): EvidenceCo
     missing.push("Community Discussion Reports");
   }
 
-  const category = score >= 70 ? "HIGH" : score >= 40 ? "MEDIUM" : "LOW";
+  const category = score >= 70 ? "HIGH" : score >= 40 ? "MODERATE" : "LOW";
   const percentage = Math.min(100, Math.round(score));
 
   return {
@@ -357,7 +358,7 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
   rawTrust = Math.max(5, Math.min(98, rawTrust + ruleScoreImpact));
 
   // --- Continuous Dynamic Scoring Formulation (No Flat Clamps) ---
-  const docText = inputs.documentData?.extracted_text || inputs.contextText || inputs.entityValue || "";
+  const docText = inputs.documentData?.extracted_text || (inputs as any).contextText || (inputs as any).entityValue || "";
   const textLen = docText.length;
   // Compute deterministic hash variance (-4 to +4) from document text
   const hashSeed = docText.split('').reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) % 10007, 0);
@@ -406,7 +407,7 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
     communityConfidence * 0.10 +
     consistencyConfidence * 0.05
   );
-  const finalConfidence = Math.round(avgConfidence * (completeness.percentage / 100));
+  const finalConfidence = Math.round(avgConfidence * ((completeness.percentage || (completeness as any).score || 80) / 100));
 
   // Determine Risk Level & Verdict (Strict Non-Binary Calibration)
   let riskLevel: RiskLevel = "LOW";
@@ -419,7 +420,7 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
     riskLevel = "LOW";
     verdict = "LOW RISK";
   } else if (finalTrust >= 45) {
-    riskLevel = "MEDIUM";
+    riskLevel = "MODERATE";
     verdict = "MODERATE RISK";
   } else if (finalTrust >= 28) {
     riskLevel = "HIGH";
@@ -430,7 +431,7 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
   }
 
   // If evidence is sparse, report INCONCLUSIVE / INSUFFICIENT EVIDENCE
-  if (completeness.percentage < 30 && finalTrust >= 45 && finalTrust <= 75) {
+  if ((completeness.percentage || (completeness as any).score || 80) < 30 && finalTrust >= 45 && finalTrust <= 75) {
     verdict = "INSUFFICIENT_EVIDENCE";
   }
 

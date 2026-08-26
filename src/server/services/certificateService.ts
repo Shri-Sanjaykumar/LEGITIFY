@@ -1,3 +1,4 @@
+export type CertificateVerificationResult = CertificateVerificationData;
 // ==============================================================================
 // CERTIFICATE VERIFICATION ENGINE (10-Tier Evidence Hierarchy)
 // ==============================================================================

@@ -4,13 +4,17 @@
 import { normalizeEmail, extractDomainFromEmail, isFreeEmailProvider } from '../utils/normalizer';
 import { EvidenceItem } from '../../types';
 
+export type RecruiterData = RecruiterAnalysisData;
 export interface RecruiterAnalysisData {
   email: string;
   normalized_email: string;
   sender_domain: string;
   company_domain?: string;
-  domain_alignment: "EXACT_MATCH" | "SUBSIDIARY_MATCH" | "FREE_EMAIL" | "MISMATCH" | "LOOKALIKE" | "UNKNOWN";
+  domain_alignment: "EXACT_MATCH" | "SUBSIDIARY_MATCH" | "FREE_EMAIL" | "MISMATCH" | "LOOKALIKE" | "UNKNOWN" | "MATCH";
   free_email_provider: boolean;
+  is_free_provider?: boolean;
+  domain?: string;
+  display_name?: string;
   spf_status?: "PASS" | "FAIL" | "NEUTRAL" | "UNAVAILABLE";
   dkim_status?: "PASS" | "FAIL" | "NEUTRAL" | "UNAVAILABLE";
   dmarc_status?: "PASS" | "FAIL" | "NEUTRAL" | "UNAVAILABLE";

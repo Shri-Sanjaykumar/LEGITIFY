@@ -77,10 +77,10 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
   }
 
   await logAuditEvent({
-    userId,
+    user_id: userId,
     action: 'SCAN_STARTED',
-    resourceType: 'scan',
-    resourceId: scanId,
+    resource_type: 'scan',
+    resource_id: scanId,
     ip,
     userAgent,
     metadata: { entityType, entityValue },
@@ -296,10 +296,10 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
   await persistReport(scanId, userId, finalReport, evidence, companyData);
 
   await logAuditEvent({
-    userId,
+    user_id: userId,
     action: 'SCAN_COMPLETED',
-    resourceType: 'scan',
-    resourceId: scanId,
+    resource_type: 'scan',
+    resource_id: scanId,
     ip,
     userAgent,
     metadata: {

@@ -127,8 +127,8 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
       city: companyData?.city,
       website: companyData?.website,
       domain: companyData?.domain,
-      last_verified: companyData?.last_verified,
-      source: companyData?.source,
+      last_verified: companyData?.last_verified_at,
+      source: companyData?.registry_status,
     },
     domain_analysis: {
       domain: domainData?.domain,

@@ -149,23 +149,37 @@ const URGENCY_PHRASES = [
 ];
 
 export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
+  // Tier 1: Multimodal Gemini Vision / PDF OCR
   try {
-    const PDFClass = (pdfParse as any).PDFParse || (pdfParse as any).default?.PDFParse;
-    if (typeof PDFClass === 'function') {
-      const parser = new PDFClass({ data: buffer });
-      const data = await parser.getText();
-      const parsedText = (typeof data === 'string' ? data : data?.text || '').trim();
-      if (parsedText.length > 20) return parsedText;
-    } else if (typeof pdfParse === 'function') {
-      const data = await (pdfParse as any)(buffer);
-      const parsedText = data?.text?.trim() || '';
-      if (parsedText.length > 20) return parsedText;
+    const ocrText = await extractTextFromImage(buffer, 'application/pdf');
+    if (ocrText && ocrText.trim().length > 20) return ocrText.trim();
+  } catch {}
+
+  // Tier 2: Dynamic lazy pdf-parse
+  try {
+    const pdfModule = await import('pdf-parse');
+    const parseFn = (pdfModule as any).default || pdfModule;
+    if (typeof parseFn === 'function') {
+      const data = await parseFn(buffer);
+      const parsed = data?.text?.trim() || '';
+      if (parsed.length > 20) return parsed;
     }
   } catch {}
 
+  // Tier 3: Binary text chunks
   try {
-    const ocrText = await extractTextFromImage(buffer, 'application/pdf');
-    if (ocrText && ocrText.trim().length > 15) return ocrText.trim();
+    const rawStr = buffer.toString('latin1');
+    const textChunks: string[] = [];
+    const textBlockRegex = /\(([^)]+)\)\s*Tj|\[([^\]]+)\]\s*TJ/g;
+    let match;
+    while ((match = textBlockRegex.exec(rawStr)) !== null) {
+      const chunk = match[1] || match[2] || '';
+      const cleanChunk = chunk.replace(/\\([()\\])/g, '$1').trim();
+      if (cleanChunk.length > 1) textChunks.push(cleanChunk);
+    }
+    if (textChunks.length > 5) {
+      return textChunks.join(' ').replace(/\s+/g, ' ').trim();
+    }
   } catch {}
 
   const rawStr = buffer.toString('utf-8');
