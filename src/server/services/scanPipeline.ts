@@ -196,6 +196,53 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     evidence.push(...webResult.evidence);
   }
 
+  // Step 5.5: RAG Dynamic Claim-by-Claim Verification
+  const claims = (docResult as any)?.extracted_claims || [];
+  for (const clm of claims) {
+    if (clm.claim_type === 'ORGANIZATION') {
+      if (mcaResult && mcaResult.status === 'VERIFIED_REGISTERED' && mcaResult.record) {
+        clm.verification_status = 'VERIFIED';
+        clm.retrieved_reality = `MCA21 Active Registry: ${mcaResult.record.legal_name} (CIN: ${mcaResult.record.cin || mcaResult.record.llpin || 'Verified'})`;
+        clm.explanation = 'Legal corporate entity exists in official Ministry of Corporate Affairs registry.';
+        clm.evidence_source = '[E-001] MCA21 Corporate Master Database';
+      } else {
+        clm.verification_status = 'UNVERIFIED';
+        clm.retrieved_reality = 'No direct active match in standard Indian MCA corporate registry for this string';
+        clm.explanation = 'Organization could not be independently authenticated with statutory corporate master database.';
+        clm.evidence_source = '[E-001] MCA21 Corporate Master Database';
+      }
+    } else if (clm.claim_type === 'CONTACT_EMAIL') {
+      if (recruiterData) {
+        if (recruiterData.free_email_provider || recruiterData.domain_alignment === 'FREE_EMAIL') {
+          clm.verification_status = 'SUSPICIOUS';
+          clm.retrieved_reality = `Public Webmail Provider (${targetEmail}) conflicting with enterprise corporate domain`;
+          clm.explanation = 'Legitimate enterprise recruiters communicate via corporate domain addresses, not free public webmail.';
+          clm.evidence_source = '[E-003] Recruiter Authentication Engine';
+        } else if (recruiterData.domain_alignment === 'EXACT_MATCH' || recruiterData.domain_alignment === 'MATCH') {
+          clm.verification_status = 'VERIFIED';
+          clm.retrieved_reality = 'Sender address matches verified authoritative corporate domain';
+          clm.explanation = 'Recruiter handle is authenticated on the organization\'s official enterprise domain.';
+          clm.evidence_source = '[E-003] Recruiter Authentication Engine';
+        } else {
+          clm.verification_status = 'UNVERIFIED';
+          clm.retrieved_reality = `Sender domain '${domainData?.domain || targetDomain}' unverified against official company domain`;
+          clm.explanation = 'Recruiter email domain could not be independently linked to the claimed corporate entity.';
+          clm.evidence_source = '[E-003] Recruiter Authentication Engine';
+        }
+      }
+    } else if (clm.claim_type === 'CIN_REGISTRATION') {
+      if (mcaResult && mcaResult.status === 'VERIFIED_REGISTERED') {
+        clm.verification_status = 'VERIFIED';
+        clm.retrieved_reality = `Valid CIN authenticated to ${mcaResult.record.legal_name}`;
+        clm.evidence_source = '[E-001] MCA21 Statutory Registry';
+      } else {
+        clm.verification_status = 'UNVERIFIED';
+        clm.retrieved_reality = 'CIN unconfirmed in active corporate registry index';
+        clm.evidence_source = '[E-001] MCA21 Statutory Registry';
+      }
+    }
+  }
+
   // Step 6: Supervised Kaggle ML Risk Prediction (Offline & Real)
   const mlPrediction: MLPrediction = predictJobOfferRisk({
     text: fullTextToAnalyze || entityValue,

@@ -3,6 +3,18 @@
 // Evidence-First Trust Intelligence Matrix
 // ==============================================================================
 
+export interface DocumentClaim {
+  id: string;
+  claim_type: "ORGANIZATION" | "RECRUITER" | "CONTACT_EMAIL" | "PHONE" | "WEBSITE_DOMAIN" | "CIN_REGISTRATION" | "ROLE_DESIGNATION" | "STIPEND_COMPENSATION" | "JOINING_DATE" | "LOCATION" | "PAYMENT_REQUIREMENT" | "CERTIFICATE_ID" | "QR_CODE";
+  raw_claim_text: string;
+  normalized_value: string;
+  confidence: number;
+  verification_status: "VERIFIED" | "CONTRADICTED" | "UNVERIFIED" | "SUSPICIOUS" | "NOT_APPLICABLE";
+  retrieved_reality?: string;
+  evidence_source?: string;
+  explanation: string;
+}
+
 export type ScanEntityType =
   | "company"
   | "recruiter"

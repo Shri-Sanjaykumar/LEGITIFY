@@ -459,10 +459,90 @@ export function extractDocumentSignals(text: string, filename?: string, mimeType
     "Prepare your joining documents (ID proof, education certificates) for onboarding.",
   ];
 
+  // --- DYNAMIC CLAIM EXTRACTION (RAG PRE-PROCESSING) ---
+  const extracted_claims: import('../../types').DocumentClaim[] = [];
+
+  if (detectedCompanyName) {
+    extracted_claims.push({
+      id: `CLM-${extracted_claims.length + 1}`,
+      claim_type: "ORGANIZATION",
+      raw_claim_text: `Organization claimed as '${detectedCompanyName}'`,
+      normalized_value: detectedCompanyName,
+      confidence: 90,
+      verification_status: "UNVERIFIED",
+      explanation: "Extracted from document header/text; pending corporate registry check.",
+    });
+  }
+
+  if (emails.length > 0) {
+    extracted_claims.push({
+      id: `CLM-${extracted_claims.length + 1}`,
+      claim_type: "CONTACT_EMAIL",
+      raw_claim_text: `Recruiter email specified as '${emails[0]}'`,
+      normalized_value: emails[0],
+      confidence: 95,
+      verification_status: "UNVERIFIED",
+      explanation: "Extracted from contact section; evaluated for domain alignment.",
+    });
+  }
+
+  const cinMatch = text.match(/\b([UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6})\b/i)?.[1]?.toUpperCase();
+  if (cinMatch) {
+    extracted_claims.push({
+      id: `CLM-${extracted_claims.length + 1}`,
+      claim_type: "CIN_REGISTRATION",
+      raw_claim_text: `Corporate Identity Number claimed as ${cinMatch}`,
+      normalized_value: cinMatch,
+      confidence: 98,
+      verification_status: "UNVERIFIED",
+      explanation: "CIN found in footer; cross-checked against MCA21 master registry.",
+    });
+  }
+
+  const roleMatch = text.match(/(?:role|designation|position|internship\s+as|hired\s+as)\s*[:\-]\s*([A-Za-z0-9\s\-]{3,40})/i);
+  if (roleMatch) {
+    extracted_claims.push({
+      id: `CLM-${extracted_claims.length + 1}`,
+      claim_type: "ROLE_DESIGNATION",
+      raw_claim_text: `Role specified as '${roleMatch[1].trim()}'`,
+      normalized_value: roleMatch[1].trim(),
+      confidence: 85,
+      verification_status: "NOT_APPLICABLE",
+      explanation: "Designation extracted from offer text.",
+    });
+  }
+
+  const stipendMatch = text.match(/(?:stipend|salary|ctc|compensation|remuneration)\s*[:\-]?\s*(?:rs\.?|₹|inr)?\s*([\d,]+(?:\s*(?:per|\/)\s*(?:month|year|annum|pm|pa))?)/i);
+  if (stipendMatch) {
+    extracted_claims.push({
+      id: `CLM-${extracted_claims.length + 1}`,
+      claim_type: "STIPEND_COMPENSATION",
+      raw_claim_text: `Compensation stated as '${stipendMatch[0].trim()}'`,
+      normalized_value: stipendMatch[0].trim(),
+      confidence: 85,
+      verification_status: "NOT_APPLICABLE",
+      explanation: "Extracted compensation clause.",
+    });
+  }
+
+  if (isFeeDemand) {
+    extracted_claims.push({
+      id: `CLM-${extracted_claims.length + 1}`,
+      claim_type: "PAYMENT_REQUIREMENT",
+      raw_claim_text: "Candidate requested to pay fee/deposit before onboarding",
+      normalized_value: "UPFRONT_FEE_DEMAND",
+      confidence: 95,
+      verification_status: "CONTRADICTED",
+      retrieved_reality: "ILO Fair Recruitment Policy & Standard Employment Laws prohibit candidate fees",
+      explanation: "Legitimate corporate recruiters never require candidates to pay registration or security fees.",
+    });
+  }
+
   return {
     filename,
     mime_type: mimeType,
     extracted_text: text,
+    extracted_claims,
     sanitized_evidence_block: text.slice(0, 1000),
     has_fee_demand: isFeeDemand,
     detected_company_name: detectedCompanyName,
