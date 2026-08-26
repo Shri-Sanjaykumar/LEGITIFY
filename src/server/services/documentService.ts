@@ -4,15 +4,12 @@
 // ==============================================================================
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { EvidenceItem } from '../../types';
 import { extractTextFromImage } from '../utils/ocr';
 
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
 const execFileAsync = promisify(execFile);
 
 export interface TriggeredFlag {
