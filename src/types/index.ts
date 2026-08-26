@@ -1,3 +1,50 @@
+export interface DocumentClaim {
+  id: string;
+  claim_type: "ORGANIZATION" | "RECRUITER" | "CONTACT_EMAIL" | "PHONE" | "WEBSITE_DOMAIN" | "CIN_REGISTRATION" | "ROLE_DESIGNATION" | "STIPEND_COMPENSATION" | "JOINING_DATE" | "LOCATION" | "PAYMENT_REQUIREMENT" | "CERTIFICATE_ID" | "QR_CODE" | "AUTHENTICITY_SIGNAL";
+  raw_claim_text: string;
+  normalized_value: string;
+  confidence: number; // 0 - 100
+  page?: number;
+  location?: string;
+  verification_status: "VERIFIED" | "CONTRADICTED" | "UNVERIFIED" | "SUSPICIOUS" | "NOT_APPLICABLE";
+  retrieved_reality?: string;
+  evidence_source?: string;
+  evidence_ids?: string[];
+  explanation: string;
+}
+
+export interface RAGKnowledgeChunk {
+  document_id: string;
+  chunk_id: string;
+  title: string;
+  content: string;
+  source: string;
+  source_type: "GOVERNMENT_REGISTRY" | "COMPANY_CAREERS" | "CYBERCRIME_ADVISORY" | "SECURITY_DATABASE" | "COMMUNITY_FEED";
+  source_url?: string;
+  publication_date?: string;
+  authority_level: "TIER_1_AUTHORITATIVE" | "TIER_2_HIGH_QUALITY" | "TIER_3_COMMUNITY";
+  similarity_score?: number;
+  metadata?: Record<string, any>;
+}
+
+export interface FalsePositiveCheckResult {
+  is_checked: boolean;
+  legitimate_counter_evidence: {
+    title: string;
+    source: string;
+    url?: string;
+    finding: string;
+    authority: string;
+  }[];
+  suspicious_evidence: {
+    title: string;
+    source: string;
+    finding: string;
+  }[];
+  unresolved_ambiguities: string[];
+  recommendation: string;
+}
+
 // ==============================================================================
 // LEGITIFY DOMAIN & TYPE DEFINITIONS
 // Evidence-First Trust Intelligence Matrix

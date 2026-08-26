@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 // ==============================================================================
 // LEGITIFY FORENSIC & INTERNSHIELD DETECTION ENGINE
 // 100% Exact Port of InternShield NLP Classifier, NER Extractor, & 10 Rules

@@ -1,3 +1,4 @@
+import { retrieveRAGKnowledge } from './ragService';
 // ==============================================================================
 // LEGITIFY COMPLETE EVIDENCE-FIRST SCAN PIPELINE
 // Orchestrates Extraction -> Normalization -> MCA Registry -> Domain -> Recruiter -> Certificate -> Threats -> Community -> ML -> Scoring -> AI -> Report
@@ -196,7 +197,15 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     evidence.push(...webResult.evidence);
   }
 
-  // Step 5.5: RAG Dynamic Claim-by-Claim Verification
+  // Step 5.5: RAG Dynamic Knowledge Retrieval & Claim-by-Claim Verification
+  const ragResult = retrieveRAGKnowledge({
+    entityName: companyData?.legal_name || entityValue,
+    domain: domainData?.domain || targetDomain,
+    email: targetEmail,
+    hasFeeDemand: docResult?.has_fee_demand || false,
+    contextText: fullTextToAnalyze,
+  });
+
   const claims = (docResult as any)?.extracted_claims || [];
   for (const clm of claims) {
     if (clm.claim_type === 'ORGANIZATION') {
@@ -205,11 +214,13 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
         clm.retrieved_reality = `MCA21 Active Registry: ${mcaResult.record.legal_name} (CIN: ${mcaResult.record.cin || mcaResult.record.llpin || 'Verified'})`;
         clm.explanation = 'Legal corporate entity exists in official Ministry of Corporate Affairs registry.';
         clm.evidence_source = '[E-001] MCA21 Corporate Master Database';
+        clm.evidence_ids = ['E-001'];
       } else {
         clm.verification_status = 'UNVERIFIED';
         clm.retrieved_reality = 'No direct active match in standard Indian MCA corporate registry for this string';
         clm.explanation = 'Organization could not be independently authenticated with statutory corporate master database.';
         clm.evidence_source = '[E-001] MCA21 Corporate Master Database';
+        clm.evidence_ids = ['E-001'];
       }
     } else if (clm.claim_type === 'CONTACT_EMAIL') {
       if (recruiterData) {
@@ -218,16 +229,19 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
           clm.retrieved_reality = `Public Webmail Provider (${targetEmail}) conflicting with enterprise corporate domain`;
           clm.explanation = 'Legitimate enterprise recruiters communicate via corporate domain addresses, not free public webmail.';
           clm.evidence_source = '[E-003] Recruiter Authentication Engine';
+          clm.evidence_ids = ['E-003'];
         } else if (recruiterData.domain_alignment === 'EXACT_MATCH' || recruiterData.domain_alignment === 'MATCH') {
           clm.verification_status = 'VERIFIED';
           clm.retrieved_reality = 'Sender address matches verified authoritative corporate domain';
           clm.explanation = 'Recruiter handle is authenticated on the organization\'s official enterprise domain.';
           clm.evidence_source = '[E-003] Recruiter Authentication Engine';
+          clm.evidence_ids = ['E-003'];
         } else {
           clm.verification_status = 'UNVERIFIED';
           clm.retrieved_reality = `Sender domain '${domainData?.domain || targetDomain}' unverified against official company domain`;
           clm.explanation = 'Recruiter email domain could not be independently linked to the claimed corporate entity.';
           clm.evidence_source = '[E-003] Recruiter Authentication Engine';
+          clm.evidence_ids = ['E-003'];
         }
       }
     } else if (clm.claim_type === 'CIN_REGISTRATION') {
@@ -235,13 +249,58 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
         clm.verification_status = 'VERIFIED';
         clm.retrieved_reality = `Valid CIN authenticated to ${mcaResult.record.legal_name}`;
         clm.evidence_source = '[E-001] MCA21 Statutory Registry';
+        clm.evidence_ids = ['E-001'];
       } else {
         clm.verification_status = 'UNVERIFIED';
         clm.retrieved_reality = 'CIN unconfirmed in active corporate registry index';
         clm.evidence_source = '[E-001] MCA21 Statutory Registry';
+        clm.evidence_ids = ['E-001'];
       }
+    } else if (clm.claim_type === 'PAYMENT_REQUIREMENT') {
+      clm.evidence_source = '[E-004] Offer Document Forensics';
+      clm.evidence_ids = ['E-004'];
     }
   }
+
+  // False-Positive Counter-Evidence Search
+  const falsePositiveCheck: import('../../types').FalsePositiveCheckResult = {
+    is_checked: true,
+    legitimate_counter_evidence: [],
+    suspicious_evidence: [],
+    unresolved_ambiguities: [],
+    recommendation: "",
+  };
+
+  if (companyData && companyData.registry_status === 'ACTIVE') {
+    falsePositiveCheck.legitimate_counter_evidence.push({
+      title: "Statutory Incorporation in MCA21",
+      source: "Ministry of Corporate Affairs",
+      url: "https://www.mca.gov.in",
+      finding: `Entity '${companyData.legal_name}' is legally registered.`,
+      authority: "TIER_1_AUTHORITATIVE",
+    });
+  }
+
+  if (domainData && domainData.ssl_valid && (domainData.age_days || 0) > 365) {
+    falsePositiveCheck.legitimate_counter_evidence.push({
+      title: "Established Domain Age & Valid SSL",
+      source: "ICANN RDAP",
+      finding: `Domain '${domainData.domain}' has been active for ${domainData.age_days} days.`,
+      authority: "TIER_2_HIGH_QUALITY",
+    });
+  }
+
+  if (docResult?.has_fee_demand) {
+    falsePositiveCheck.suspicious_evidence.push({
+      title: "Upfront Fee Demand",
+      source: "Uploaded Document",
+      finding: "Candidate payment required prior to onboarding.",
+    });
+    falsePositiveCheck.recommendation = "Upfront monetary demand violates anti-fraud employment laws; risk remains Critical despite company registration.";
+  } else {
+    falsePositiveCheck.recommendation = "No direct monetary charges identified in document.";
+  }
+
 
   // Step 6: Supervised Kaggle ML Risk Prediction (Offline & Real)
   const mlPrediction: MLPrediction = predictJobOfferRisk({
