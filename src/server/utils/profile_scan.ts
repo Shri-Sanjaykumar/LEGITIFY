@@ -8,8 +8,8 @@ import { searchPublicExperiences } from '../services/publicExperienceService';
 import { predictJobOfferRisk } from '../ml/fraudClassifier';
 import { calculateDeterministicScore, calculateEvidenceCompleteness } from '../services/scoringService';
 import { compileFullReport } from '../services/reportService';
-import { generateDeterministicSynthesis } from '../services/aiProvider';
-import { buildEntityGraph } from '../services/graphService';
+import { getActiveAIProvider } from '../services/aiProvider';
+import { buildEntityGraph } from '../services/entityGraphService';
 
 async function profile() {
   const t0 = Date.now();
@@ -82,28 +82,26 @@ async function profile() {
   console.log(` -> Final Trust Score: ${scoreResult.trust_score}/100 | Risk: ${scoreResult.risk_level} | Verdict: ${scoreResult.verdict}`);
 
   console.log('[7/10] Synthesis & Graph...');
-  const aiSynthesis = generateDeterministicSynthesis({
+  const aiProvider = await getActiveAIProvider();
+  const aiSynthesis = await aiProvider.generateSynthesis({
     entityName: targetCompany,
     entityType: 'document',
     trustScore: scoreResult.trust_score,
-    confidence: scoreResult.confidence,
+    confidence: scoreResult.confidence_score,
     riskLevel: scoreResult.risk_level,
     verdict: scoreResult.verdict,
     evidence,
     rulesTriggered: scoreResult.rules_triggered,
     mlEvaluation: mlPrediction as any,
+    untrustedUserText: docResult.extracted_text,
   });
 
   const entityGraph = buildEntityGraph({
-    entityName: targetCompany,
-    entityType: 'document',
-    trustScore: scoreResult.trust_score,
-    riskLevel: scoreResult.risk_level,
-    domainData: domResult.data,
-    recruiterData: recResult.data,
-    certificateData: undefined,
-    threatData: threatResult ? threatResult.data : undefined,
-    scoreResult,
+    companyName: targetCompany,
+    domain: targetDomain,
+    recruiterEmail: targetEmail,
+    claims: [],
+    chunks: [],
   });
 
   console.log(`[10/10] COMPLETE in ${Date.now() - t0}ms!`);

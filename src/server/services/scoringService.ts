@@ -1,6 +1,12 @@
 // ==============================================================================
-// LEGITIFY 8-DIMENSION EVIDENCE FUSION & SCORING ENGINE
+// LEGITIFY 10-DIMENSION EVIDENCE FUSION & SCORING ENGINE
 // Deterministic multi-source evidence fusion with configurable weights & hard safety caps
+// Architecture Version: LEGITIFY-SCORE-v2.0
+//
+// DETERMINISTIC ≠ STATIC
+// Same input + same external evidence state → SAME RESULT
+// Different input/evidence → DIFFERENT RESULT
+// No Math.random(), no microVariance, no hashSeed jitter, no hardcoded score ranges
 // ==============================================================================
 import { EvidenceItem, EvidenceCompleteness, RuleEvaluation, RiskLevel } from '../../types';
 import { evaluateRules } from '../rules/ruleEngine';
@@ -8,34 +14,41 @@ import { CompanyData } from './companyService';
 import { DomainData } from './domainService';
 import { RecruiterData } from './emailService';
 import { DocumentExtractionResult } from './documentService';
-import { CertificateVerificationData, CertificateVerificationResult } from './certificateService';
+import { CertificateVerificationResult } from './certificateService';
 import { ThreatData } from './threatService';
 import { MLPrediction } from '../ml/fraudClassifier';
 import { CommunitySearchResult } from './publicExperienceService';
 import { detectEvidenceConflicts, EvidenceConflict } from './conflictService';
 
+export const SCORING_MODEL_VERSION = 'LEGITIFY-SCORE-v2.0';
+
+/**
+ * Mandatory 10-Dimension Weights (sum to 1.0 / 100%)
+ */
 export interface ScoringWeights {
-  ml_probability: number;      // 0.20 — Kaggle Supervised ML model
-  company_registry: number;    // 0.15 — MCA / Statutory Registry
-  domain_intelligence: number; // 0.15 — DNS/RDAP/TLS/Lookalike
-  recruiter_email: number;     // 0.10 — Email provider & domain alignment
-  document_offer: number;      // 0.10 — Fee demand, urgency heuristics
-  threat_intelligence: number; // 0.15 — VirusTotal + Safe Browsing + AbuseIPDB live
-  community_evidence: number;  // 0.10 — Public forum complaints & reviews
-  consistency_conflict: number;// 0.05 — Cross-signal contradiction engine
+  document_authenticity: number;    // 0.10 — Document structural analysis & layout
+  company_registry: number;         // 0.15 — MCA / Statutory Registry
+  domain_intelligence: number;      // 0.10 — DNS/RDAP/TLS/Lookalike
+  recruiter_email: number;          // 0.10 — Email provider & domain alignment
+  financial_fee_safety: number;     // 0.20 — Fee demand, candidate payment (CRITICAL)
+  certificate_verification: number; // 0.05 — Certificate / credential checks
+  ml_probability: number;           // 0.10 — Kaggle Supervised ML model
+  community_evidence: number;       // 0.05 — Public forum complaints & reviews
+  threat_intelligence: number;      // 0.05 — VirusTotal + Safe Browsing + AbuseIPDB
+  consistency_conflict: number;     // 0.10 — Cross-signal contradiction engine
 }
 
-// Equally weighted: ML (20%) + Live Threat APIs (15%) + Registry (15%) + Domain (15%)
-// = 65% evidence-first; rest from recruiter/doc/community/conflict signals
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
-  ml_probability:      0.20,
-  company_registry:    0.15,
-  domain_intelligence: 0.15,
-  recruiter_email:     0.10,
-  document_offer:      0.10,
-  threat_intelligence: 0.15,  // elevated — real VirusTotal + AbuseIPDB + Safe Browsing
-  community_evidence:  0.10,
-  consistency_conflict:0.05,
+  document_authenticity:    0.10,
+  company_registry:         0.15,
+  domain_intelligence:      0.10,
+  recruiter_email:          0.10,
+  financial_fee_safety:     0.20,  // HIGHEST: payment demand is the #1 fraud signal
+  certificate_verification: 0.05,
+  ml_probability:           0.10,
+  community_evidence:       0.05,
+  threat_intelligence:      0.05,
+  consistency_conflict:     0.10,
 };
 
 export interface ScoringInputs {
@@ -49,6 +62,8 @@ export interface ScoringInputs {
   communityData?: CommunitySearchResult;
   evidence?: EvidenceItem[];
   weights?: Partial<ScoringWeights>;
+  contextText?: string;
+  entityValue?: string;
 }
 
 export interface ScoreComponentBreakdown {
@@ -66,13 +81,15 @@ export interface DeterministicScoreResult {
   trust_score: number;
   confidence_score: number;
   risk_level: RiskLevel;
-  verdict: "LIKELY LEGITIMATE" | "LOW RISK" | "NEUTRAL / REVIEW REQUIRED" | "HIGH RISK" | "LIKELY SCAM" | "INSUFFICIENT_EVIDENCE";
+  verdict: "LIKELY LEGITIMATE" | "LOW RISK" | "MODERATE RISK" | "NEUTRAL / REVIEW REQUIRED" | "HIGH RISK" | "LIKELY SCAM" | "INSUFFICIENT_EVIDENCE";
   components: {
-    ml_probability: ScoreComponentBreakdown;
+    document_authenticity: ScoreComponentBreakdown;
     company: ScoreComponentBreakdown;
     domain: ScoreComponentBreakdown;
     recruiter: ScoreComponentBreakdown;
-    document: ScoreComponentBreakdown;
+    document: ScoreComponentBreakdown; // Financial & fee safety
+    certificate: ScoreComponentBreakdown;
+    ml_probability: ScoreComponentBreakdown;
     threat: ScoreComponentBreakdown;
     community: ScoreComponentBreakdown;
     consistency: ScoreComponentBreakdown;
@@ -83,52 +100,82 @@ export interface DeterministicScoreResult {
   positive_signals: string[];
   warning_signals: string[];
   critical_signals: string[];
+  scoring_model_version?: string;
 }
 
+/**
+ * Calculates Evidence Completeness based on actual data presence and quality,
+ * NOT mere object existence.
+ */
 export function calculateEvidenceCompleteness(inputs: ScoringInputs): EvidenceCompleteness {
   let score = 0;
   const missing: string[] = [];
 
-  if (inputs.companyData && inputs.companyData.registry_status !== 'NOT_INDEPENDENTLY_VERIFIED') {
+  // 1. Company: only count if registry produced an actual verification or structured check
+  const companyChecked = Boolean(
+    inputs.companyData &&
+    inputs.companyData.registry_status !== undefined &&
+    (inputs.companyData.registry_status as any) !== 'UNKNOWN' &&
+    (inputs.companyData.registry_status as any) !== 'NOT_INDEPENDENTLY_VERIFIED'
+  );
+  if (companyChecked) {
     score += 15;
   } else {
     missing.push("Independent Statutory Company Registry Record");
   }
 
+  // 2. Domain: only count if live DNS was resolved
   if (inputs.domainData && inputs.domainData.has_dns) {
     score += 15;
+  } else if (inputs.domainData) {
+    score += 5;
+    missing.push("Live Domain DNS & TLS Resolution");
   } else {
-    missing.push("Live Domain DNS & TLS Validation");
+    missing.push("Domain Security Intelligence");
   }
 
-  if (inputs.recruiterData) {
+  // 3. Recruiter: count if email was actually provided and analyzed
+  if (inputs.recruiterData && inputs.recruiterData.email) {
+    score += 10;
+  } else {
+    missing.push("Direct Recruiter Email Headers & Routing");
+  }
+
+  // 4. Document: count if meaningful text was extracted
+  const docTextLength = (inputs.documentData?.extracted_text || '').trim().length;
+  if (docTextLength > 50) {
     score += 15;
+  } else if (docTextLength > 0) {
+    score += 5;
+    missing.push("Complete Offer Document Text (Insufficient length)");
   } else {
-    missing.push("Direct Recruiter Email Headers");
+    missing.push("Offer Document Text Extraction");
   }
 
-  if (inputs.documentData) {
-    score += 15;
-  } else {
-    missing.push("Complete Offer Document Text");
-  }
-
-  if (inputs.mlPrediction) {
+  // 5. ML Model: count if ML fraud classifier ran
+  if (inputs.mlPrediction && inputs.mlPrediction.fraudProbability !== undefined) {
     score += 15;
   } else {
     missing.push("Supervised ML Fraud Prediction");
   }
 
-  if (inputs.threatData) {
+  // 6. Threat Intel: count if threat feeds were queried
+  if (inputs.threatData && !(inputs.threatData as any).source_unavailable) {
     score += 15;
   } else {
-    missing.push("Threat Intelligence Feeds");
+    missing.push("Live Threat Intelligence Feeds");
   }
 
+  // 7. Community: count if search was executed
   if (inputs.communityData && inputs.communityData.totalRelevantResults > 0) {
     score += 10;
   } else {
     missing.push("Community Discussion Reports");
+  }
+
+  // 8. Certificate: count if checked when relevant
+  if (inputs.certificateData) {
+    score += 5;
   }
 
   const category = score >= 70 ? "HIGH" : score >= 40 ? "MODERATE" : "LOW";
@@ -136,13 +183,29 @@ export function calculateEvidenceCompleteness(inputs: ScoringInputs): EvidenceCo
 
   return {
     score,
+    overall_percentage: percentage,
     percentage,
     category,
     summary: `${percentage}% of expected evidence collected (${category} Completeness)`,
     missing_evidence: missing,
+    breakdown: {
+      company: { observed: companyChecked ? 1 : 0, expected: 1, percentage: companyChecked ? 100 : 0 },
+      domain: { observed: inputs.domainData?.has_dns ? 1 : 0, expected: 1, percentage: inputs.domainData?.has_dns ? 100 : 0 },
+      recruiter: { observed: inputs.recruiterData?.email ? 1 : 0, expected: 1, percentage: inputs.recruiterData?.email ? 100 : 0 },
+      certificate: { observed: inputs.certificateData ? 1 : 0, expected: 1, percentage: inputs.certificateData ? 100 : 0 },
+      document: { observed: docTextLength > 50 ? 1 : 0, expected: 1, percentage: docTextLength > 50 ? 100 : 0 },
+      threat: { observed: inputs.threatData ? 1 : 0, expected: 1, percentage: inputs.threatData ? 100 : 0 },
+    },
   };
 }
 
+/**
+ * Deterministically computes the forensic trust score from actual evidence.
+ * 
+ * CORE PRINCIPLE:
+ * Same evidence snapshot → identical mathematical score.
+ * Different evidence → proportionally different score.
+ */
 export function calculateDeterministicScore(inputs: ScoringInputs): DeterministicScoreResult {
   const evidenceList = inputs.evidence || [];
   const weights: ScoringWeights = { ...DEFAULT_SCORING_WEIGHTS, ...(inputs.weights || {}) };
@@ -165,45 +228,67 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
     }
   }
 
-  // 1. ML Probability Score (Weight: 25%)
-  let mlScore = 50;
-  let mlConfidence = 50;
-  let mlReason = "Supervised ML pattern evaluation pending.";
-  if (inputs.mlPrediction) {
-    mlScore = Math.round((1 - inputs.mlPrediction.fraudProbability) * 100);
-    mlConfidence = Math.round(inputs.mlPrediction.confidence * 100);
-    if (inputs.mlPrediction.fraudProbability >= 0.70) {
-      mlReason = `Supervised ML classifier flagged high similarity to fraudulent job postings (Fraud Prob: ${inputs.mlPrediction.fraudProbability}).`;
-      // ML alone is a warning, not critical — it needs corroboration from concrete evidence
-      warningSignals.push(`Supervised ML Model (${inputs.mlPrediction.algorithm}) flagged ${inputs.mlPrediction.fraudProbability * 100}% fraud probability — pending corroboration`);
-    } else if (inputs.mlPrediction.fraudProbability <= 0.20) {
-      mlReason = `Supervised ML classifier predicts high probability of legitimate offer (Fraud Prob: ${inputs.mlPrediction.fraudProbability}).`;
-      positiveSignals.push("Supervised ML classifier verified legitimate job listing syntax.");
+  // ============================================================================
+  // 1. Document Authenticity Score (Weight: 10%)
+  // ============================================================================
+  let docAuthScore = 50;
+  let docAuthConfidence = 40;
+  let docAuthReason = "No document provided for visual/structural authenticity analysis.";
+  if (inputs.documentData) {
+    docAuthConfidence = 85;
+    const flagCount = inputs.documentData.triggered_flags?.length || 0;
+    if (inputs.documentData.is_confirmed_impersonation) {
+      docAuthScore = 5;
+      docAuthReason = "Document identified as confirmed corporate impersonation attempt.";
+      criticalSignals.push("Document identified as confirmed corporate impersonation attempt.");
+    } else if (inputs.documentData.is_suspicious_offer_letter) {
+      docAuthScore = 15;
+      docAuthReason = "Document exhibits structural anomalies consistent with fabricated offer letters.";
+      warningSignals.push("Document structure exhibits anomalies typical of fraudulent offers.");
+    } else if (flagCount >= 3) {
+      docAuthScore = Math.max(20, 60 - flagCount * 10);
+      docAuthReason = `Document triggered ${flagCount} structural anomaly flags.`;
+      warningSignals.push(`Multiple document anomaly flags triggered (${flagCount}).`);
+    } else {
+      docAuthScore = 85;
+      docAuthReason = "Document structure and layout align with genuine formal correspondence.";
+      positiveSignals.push("Document structure consistent with legitimate offer.");
     }
   }
 
-  // 2. Company Registry Score (Weight: 15%)
+  // ============================================================================
+  // 2. Company Legal Verification Score (Weight: 15%)
+  // ============================================================================
   let companyScore = 50;
   let companyConfidence = 40;
   let companyReason = "Company identity not independently verified in statutory register.";
   if (inputs.companyData) {
-    const isReg = ['VERIFIED', 'VERIFIED_INDEPENDENTLY', 'REGISTERED', 'ACTIVE'].includes(inputs.companyData.registry_status as string) || inputs.companyData.status === 'ACTIVE' || !!inputs.companyData.registration_number;
-    if (isReg) {
+    const isLiveReg = ['VERIFIED', 'VERIFIED_INDEPENDENTLY', 'ACTIVE'].includes(inputs.companyData.registry_status as string) && inputs.companyData.status === 'ACTIVE';
+    const isLocalRef = (inputs.companyData.registry_status as string) === 'LOCAL_REFERENCE_FOUND';
+
+    if (isLiveReg) {
       companyScore = 95;
       companyConfidence = 95;
       companyReason = `Verified statutory enterprise registration (${inputs.companyData.legal_name || 'Active'}).`;
       positiveSignals.push(`Statutory company registration confirmed: ${inputs.companyData.legal_name || 'Active'}`);
+    } else if (isLocalRef) {
+      companyScore = 80;
+      companyConfidence = 65;
+      companyReason = `Matched local reference dataset (${inputs.companyData.legal_name || 'Active'}). Note: Live MCA21 statutory verification is not configured.`;
+      positiveSignals.push(`Company found in local reference records: ${inputs.companyData.legal_name || 'Active'}`);
     } else if (inputs.companyData.registry_status === 'NOT_FOUND') {
       companyScore = 45;
       companyConfidence = 60;
-      companyReason = "No statutory record found in direct index. (Not found does not imply fraud).";
+      companyReason = "No statutory record found in direct index. (Absence does not imply fraud).";
     }
   }
 
-  // 3. Domain Intelligence Score (Weight: 15%)
+  // ============================================================================
+  // 3. Domain Security Score (Weight: 10%)
+  // ============================================================================
   let domainScore = 50;
   let domainConfidence = 40;
-  let domainReason = "Domain intelligence pending lookup.";
+  let domainReason = "Domain security intelligence pending lookup.";
   if (inputs.domainData) {
     domainConfidence = 85;
     if (inputs.domainData.lookalike_detected) {
@@ -215,13 +300,19 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
       domainReason = `Newly registered domain (${inputs.domainData.age_days} days old).`;
       warningSignals.push(`Domain registered recently (${inputs.domainData.age_days} days ago).`);
     } else if (inputs.domainData.has_dns && inputs.domainData.ssl_valid) {
-      domainScore = 92;
-      domainReason = "Domain has healthy DNS and valid TLS certificate.";
-      positiveSignals.push("Domain exhibits healthy DNS and valid SSL certificate.");
+      // Established domain with valid TLS is capped at 85 unless mature
+      const isMature = (inputs.domainData.age_days || 0) > 365;
+      domainScore = isMature ? 90 : 75;
+      domainReason = isMature
+        ? `Established domain (${inputs.domainData.age_days} days old) with valid DNS and TLS.`
+        : "Domain has active DNS and valid TLS certificate (infrastructure confirmed).";
+      positiveSignals.push("Domain infrastructure verified (active DNS & valid TLS).");
     }
   }
 
-  // 4. Recruiter / Email Score (Weight: 10%)
+  // ============================================================================
+  // 4. Recruiter Authentication Score (Weight: 10%)
+  // ============================================================================
   let recruiterScore = 50;
   let recruiterConfidence = 40;
   let recruiterReason = "Recruiter profile unverified.";
@@ -230,6 +321,7 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
     const isFree = inputs.recruiterData.free_email_provider || inputs.recruiterData.is_free_provider;
     const isMatched = inputs.recruiterData.domain_alignment === 'EXACT_MATCH' || inputs.recruiterData.domain_alignment === 'SUBSIDIARY_MATCH' || inputs.recruiterData.domain_alignment === 'MATCH';
     const isLookalike = inputs.recruiterData.domain_alignment === 'LOOKALIKE';
+
     if (isLookalike) {
       recruiterScore = 10;
       recruiterReason = "Recruiter email utilizes deceptive lookalike domain.";
@@ -239,74 +331,118 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
       recruiterReason = "Recruiter communicates via public free webmail handle (Gmail/Yahoo).";
       warningSignals.push("Recruiter using free public webmail (Gmail/Yahoo) rather than verified corporate domain.");
     } else if (isMatched) {
-      recruiterScore = 95;
-      recruiterReason = "Recruiter domain aligns with registered corporate domain.";
+      recruiterScore = 90;
+      recruiterReason = "Recruiter domain aligns with registered corporate domain (authorized alignment).";
       positiveSignals.push("Sender email domain matches verified corporate domain.");
     }
   }
 
-  // 5. Document / Offer Score (Weight: 10%)
+  // ============================================================================
+  // 5. Financial / Fee Safety Score (Weight: 20% — HIGHEST WEIGHT)
+  // ============================================================================
   let documentScore = 50;
   let documentConfidence = 40;
-  let documentReason = "No document provided for textual analysis.";
+  let documentReason = "No document text available for fee & monetary clause analysis.";
   if (inputs.documentData) {
-    documentConfidence = 90;
-    if (inputs.documentData.is_confirmed_impersonation) {
+    documentConfidence = 95;
+    if (inputs.documentData.has_fee_demand) {
       documentScore = 5;
-      documentReason = "Official company disavowal / impersonation scam alert detected.";
-      criticalSignals.push("Official company statement explicitly confirms communication is unauthorized/fraudulent.");
-    } else if (inputs.documentData.is_suspicious_offer_letter) {
-      documentScore = 10;
-      documentReason = "Suspicious offer letter: Personal contact on enterprise letterhead with structural/grammatical flaws.";
-      criticalSignals.push("Fabricated offer letter detected: Enterprise letterhead lacks corporate domain contact and contains severe syntax anomalies.");
-    } else if (inputs.documentData.has_fee_demand) {
-      documentScore = 10;
-      documentReason = "Mandatory candidate payment or deposit request detected.";
-      criticalSignals.push("Upfront payment/security deposit requested from candidate.");
+      documentReason = "Mandatory candidate payment, deposit, or registration fee detected.";
+      criticalSignals.push("Mandatory candidate fee/security deposit requested in offer.");
     } else {
-      documentScore = 88;
-      documentReason = "Offer document text free of upfront payment clauses.";
-      positiveSignals.push("Offer contains no monetary deposit requests.");
+      documentScore = 90;
+      documentReason = "Offer document text is free of upfront payment clauses.";
+      positiveSignals.push("Offer contains no monetary deposit requests (Zero-Fee Standard respected).");
     }
   }
 
-  // 6. Threat Intelligence Score (Weight: 10%)
+  // ============================================================================
+  // 6. Certificate Verification Score (Weight: 5%)
+  // ============================================================================
+  let certScore = 50;
+  let certConfidence = 30;
+  let certReason = "No certificate verification performed.";
+  if (inputs.certificateData) {
+    certConfidence = 80;
+    if (inputs.certificateData.status === 'VERIFIED_AUTHENTIC' || (inputs.certificateData.status as any) === 'VERIFIED') {
+      certScore = 90;
+      certReason = "Certificate independently verified against issuer records.";
+      positiveSignals.push("Certificate independently authenticated.");
+    } else if (inputs.certificateData.status === 'LIKELY_FRAUDULENT' || (inputs.certificateData.status as any) === 'SUSPICIOUS' || (inputs.certificateData.status as any) === 'INVALID') {
+      certScore = 15;
+      certReason = "Certificate verification failed or flagged as invalid.";
+      warningSignals.push("Certificate verification returned suspicious or invalid status.");
+    } else {
+      certScore = 50;
+      certReason = "Certificate could not be independently authenticated.";
+    }
+  }
+
+  // ============================================================================
+  // 7. ML Fraud Model Score (Weight: 10%)
+  // ============================================================================
+  let mlScore = 50;
+  let mlConfidence = 50;
+  let mlReason = "Supervised ML pattern evaluation pending.";
+  if (inputs.mlPrediction) {
+    mlScore = Math.round((1 - inputs.mlPrediction.fraudProbability) * 100);
+    mlConfidence = Math.round(inputs.mlPrediction.confidence * 100);
+    if (inputs.mlPrediction.fraudProbability >= 0.70) {
+      mlReason = `Supervised ML classifier flagged high similarity to fraudulent job postings (${Math.round(inputs.mlPrediction.fraudProbability * 100)}%).`;
+      warningSignals.push(`Supervised ML Model (${inputs.mlPrediction.algorithm}) flagged ${Math.round(inputs.mlPrediction.fraudProbability * 100)}% fraud probability — requires corroboration`);
+    } else if (inputs.mlPrediction.fraudProbability <= 0.20) {
+      mlReason = `Supervised ML classifier predicts high probability of legitimate offer (${Math.round((1 - inputs.mlPrediction.fraudProbability) * 100)}%).`;
+      positiveSignals.push("Supervised ML classifier verified legitimate job listing syntax.");
+    }
+  }
+
+  // ============================================================================
+  // 8. Threat Intelligence Score (Weight: 5%)
+  // ============================================================================
   let threatScore = 80;
   let threatConfidence = 70;
-  let threatReason = "No known malicious IOCs matched in threat feeds.";
+  let threatReason = "No known malicious IOCs matched in active threat feeds.";
   if (inputs.threatData) {
     threatConfidence = 90;
     if (inputs.threatData.known_threat || inputs.threatData.max_severity === 'CRITICAL') {
       threatScore = 10;
-      threatReason = "Entity matches known malicious threat intelligence feeds.";
+      threatReason = "Entity matches known malicious threat intelligence feeds (IOC confirmed).";
       criticalSignals.push("Direct match in global security threat feeds (AbuseIPDB/URLhaus).");
     } else {
       positiveSignals.push("Entity clean in threat intelligence databases.");
     }
   }
 
-  // 7. Public Community Evidence Score (Weight: 10%)
+  // ============================================================================
+  // 9. Community Evidence Score (Weight: 5%)
+  // ============================================================================
   let communityScore = 50;
   let communityConfidence = 40;
   let communityReason = "No verified community discussion records found.";
   if (inputs.communityData && inputs.communityData.totalRelevantResults > 0) {
-    communityConfidence = Math.round(inputs.communityData.communityConfidence * 100);
-    if (inputs.communityData.riskSignals.length >= 2) {
+    const experiences = (inputs.communityData as any).experiences || [];
+    const fraudSignals = experiences.filter((e: any) => e.experienceType?.includes('SCAM') || e.experienceType?.includes('FRAUD') || e.experienceType?.includes('PAYMENT'));
+    const posSignals = experiences.filter((e: any) => e.experienceType?.includes('POSITIVE') || e.experienceType?.includes('VERIFIED'));
+    communityConfidence = 80;
+    if (fraudSignals.length >= 2) {
       communityScore = 20;
-      communityReason = `Multiple independent public complaints corroborated across ${inputs.communityData.uniqueExperienceClusters} clusters.`;
-      criticalSignals.push(`Public forums record ${inputs.communityData.riskSignals.length} independent complaints regarding fees/unpaid stipends.`);
-    } else if (inputs.communityData.riskSignals.length === 1) {
+      communityReason = `Multiple independent public complaints corroborated (${fraudSignals.length} reports).`;
+      criticalSignals.push(`Public forums record ${fraudSignals.length} independent complaints regarding recruitment irregularities.`);
+    } else if (fraudSignals.length === 1) {
       communityScore = 40;
       communityReason = "Single unverified public community post found (weak signal).";
       warningSignals.push("Isolated public community discussion noting recruitment irregularities.");
-    } else if (inputs.communityData.positiveSignals.length > 0) {
+    } else if (posSignals.length > 0) {
       communityScore = 90;
       communityReason = "Public forum reviews corroborate positive candidate experience.";
       positiveSignals.push("Public community reports confirm legitimate internship hiring.");
     }
   }
 
-  // 8. Cross-Source Consistency & Conflict Score (Weight: 5%)
+  // ============================================================================
+  // 10. Cross-Source Consistency Score (Weight: 10%)
+  // ============================================================================
+  const communityExperiences = (inputs.communityData as any)?.experiences || [];
   const conflicts = detectEvidenceConflicts({
     companyData: inputs.companyData,
     domainData: inputs.domainData,
@@ -315,101 +451,185 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
     mlPrediction: inputs.mlPrediction,
     threatData: inputs.threatData,
     hasFeeDemand: inputs.documentData?.has_fee_demand,
-    communityNegativeCount: inputs.communityData?.riskSignals.length,
-    communityPositiveCount: inputs.communityData?.positiveSignals.length,
+    communityNegativeCount: communityExperiences.filter((e: any) => e.experienceType?.includes('SCAM') || e.experienceType?.includes('FRAUD')).length,
+    communityPositiveCount: communityExperiences.filter((e: any) => e.experienceType?.includes('POSITIVE')).length,
   });
 
-  let consistencyScore = 80;
+  let consistencyScore = 85;
   let consistencyConfidence = 75;
-  let consistencyReason = "Cross-source signals are consistent.";
+  let consistencyReason = "Cross-source signals are internally consistent.";
   if (conflicts.length > 0) {
-    consistencyScore = Math.max(15, 80 - (conflicts.length * 25));
+    consistencyScore = Math.max(15, 85 - (conflicts.length * 20));
     consistencyReason = `Identified ${conflicts.length} evidence conflicts across sources.`;
     for (const conf of conflicts) {
       warningSignals.push(`Evidence Conflict: ${conf.title}`);
     }
   }
 
-  // Component breakdown
+  // ============================================================================
+  // Compile 10 Components Breakdown
+  // ============================================================================
   const components: DeterministicScoreResult['components'] = {
-    ml_probability: { name: "ML Fraud Model", weight: weights.ml_probability, score: mlScore, weighted_score: mlScore * weights.ml_probability, confidence: mlConfidence, reason: mlReason, evidence_count: 1 },
-    company: { name: "Company Registry", weight: weights.company_registry, score: companyScore, weighted_score: companyScore * weights.company_registry, confidence: companyConfidence, reason: companyReason, evidence_count: evidenceList.filter(e => e.category === 'COMPANY' || e.category === 'REGISTRY').length },
-    domain: { name: "Domain Intelligence", weight: weights.domain_intelligence, score: domainScore, weighted_score: domainScore * weights.domain_intelligence, confidence: domainConfidence, reason: domainReason, evidence_count: evidenceList.filter(e => e.category === 'DOMAIN').length },
-    recruiter: { name: "Recruiter Authenticity", weight: weights.recruiter_email, score: recruiterScore, weighted_score: recruiterScore * weights.recruiter_email, confidence: recruiterConfidence, reason: recruiterReason, evidence_count: evidenceList.filter(e => e.category === 'RECRUITER' || e.category === 'EMAIL').length },
-    document: { name: "Offer & Document Analysis", weight: weights.document_offer, score: documentScore, weighted_score: documentScore * weights.document_offer, confidence: documentConfidence, reason: documentReason, evidence_count: evidenceList.filter(e => e.category === 'DOCUMENT' || e.category === 'OFFER').length },
-    threat: { name: "Threat Intelligence Feeds", weight: weights.threat_intelligence, score: threatScore, weighted_score: threatScore * weights.threat_intelligence, confidence: threatConfidence, reason: threatReason, evidence_count: evidenceList.filter(e => e.category === 'THREAT').length },
-    community: { name: "Public User Experiences", weight: weights.community_evidence, score: communityScore, weighted_score: communityScore * weights.community_evidence, confidence: communityConfidence, reason: communityReason, evidence_count: evidenceList.filter(e => e.category === 'PUBLIC_REPORT').length },
-    consistency: { name: "Cross-Source Consistency", weight: weights.consistency_conflict, score: consistencyScore, weighted_score: consistencyScore * weights.consistency_conflict, confidence: consistencyConfidence, reason: consistencyReason, evidence_count: conflicts.length },
+    document_authenticity: {
+      name: "Document Authenticity",
+      weight: weights.document_authenticity,
+      score: docAuthScore,
+      weighted_score: Number((docAuthScore * weights.document_authenticity).toFixed(2)),
+      confidence: docAuthConfidence,
+      reason: docAuthReason,
+      evidence_count: evidenceList.filter(e => e.category === 'DOCUMENT' || (e.category as any) === 'VISUAL').length,
+    },
+    company: {
+      name: "Company Legal Verification",
+      weight: weights.company_registry,
+      score: companyScore,
+      weighted_score: Number((companyScore * weights.company_registry).toFixed(2)),
+      confidence: companyConfidence,
+      reason: companyReason,
+      evidence_count: evidenceList.filter(e => e.category === 'COMPANY' || e.category === 'REGISTRY').length,
+    },
+    domain: {
+      name: "Domain Security",
+      weight: weights.domain_intelligence,
+      score: domainScore,
+      weighted_score: Number((domainScore * weights.domain_intelligence).toFixed(2)),
+      confidence: domainConfidence,
+      reason: domainReason,
+      evidence_count: evidenceList.filter(e => e.category === 'DOMAIN').length,
+    },
+    recruiter: {
+      name: "Recruiter Authentication",
+      weight: weights.recruiter_email,
+      score: recruiterScore,
+      weighted_score: Number((recruiterScore * weights.recruiter_email).toFixed(2)),
+      confidence: recruiterConfidence,
+      reason: recruiterReason,
+      evidence_count: evidenceList.filter(e => e.category === 'RECRUITER' || e.category === 'EMAIL').length,
+    },
+    document: {
+      name: "Financial / Fee Safety",
+      weight: weights.financial_fee_safety,
+      score: documentScore,
+      weighted_score: Number((documentScore * weights.financial_fee_safety).toFixed(2)),
+      confidence: documentConfidence,
+      reason: documentReason,
+      evidence_count: evidenceList.filter(e => e.category === 'OFFER' || (e.category as any) === 'PAYMENT' || e.category === 'DOCUMENT').length,
+    },
+    certificate: {
+      name: "Certificate Verification",
+      weight: weights.certificate_verification,
+      score: certScore,
+      weighted_score: Number((certScore * weights.certificate_verification).toFixed(2)),
+      confidence: certConfidence,
+      reason: certReason,
+      evidence_count: evidenceList.filter(e => e.category === 'CERTIFICATE').length,
+    },
+    ml_probability: {
+      name: "ML Fraud Model",
+      weight: weights.ml_probability,
+      score: mlScore,
+      weighted_score: Number((mlScore * weights.ml_probability).toFixed(2)),
+      confidence: mlConfidence,
+      reason: mlReason,
+      evidence_count: 1,
+    },
+    threat: {
+      name: "Threat Intelligence",
+      weight: weights.threat_intelligence,
+      score: threatScore,
+      weighted_score: Number((threatScore * weights.threat_intelligence).toFixed(2)),
+      confidence: threatConfidence,
+      reason: threatReason,
+      evidence_count: evidenceList.filter(e => e.category === 'THREAT').length,
+    },
+    community: {
+      name: "Community Evidence",
+      weight: weights.community_evidence,
+      score: communityScore,
+      weighted_score: Number((communityScore * weights.community_evidence).toFixed(2)),
+      confidence: communityConfidence,
+      reason: communityReason,
+      evidence_count: evidenceList.filter(e => e.category === 'PUBLIC_REPORT' || (e.category as any) === 'COMMUNITY').length,
+    },
+    consistency: {
+      name: "Cross-Source Consistency",
+      weight: weights.consistency_conflict,
+      score: consistencyScore,
+      weighted_score: Number((consistencyScore * weights.consistency_conflict).toFixed(2)),
+      confidence: consistencyConfidence,
+      reason: consistencyReason,
+      evidence_count: conflicts.length,
+    },
   };
 
-  // Base weighted score calculation
+  // Base weighted score calculation (10 dimensions)
   let rawTrust = (
-    components.ml_probability.weighted_score +
+    components.document_authenticity.weighted_score +
     components.company.weighted_score +
     components.domain.weighted_score +
     components.recruiter.weighted_score +
     components.document.weighted_score +
+    components.certificate.weighted_score +
+    components.ml_probability.weighted_score +
     components.threat.weighted_score +
     components.community.weighted_score +
     components.consistency.weighted_score
   );
 
-  // Apply deterministic rule impact
+  // Apply deterministic rule impact (bounded)
   rawTrust = Math.max(5, Math.min(98, rawTrust + ruleScoreImpact));
 
-  // --- Continuous Dynamic Scoring Formulation (No Flat Clamps) ---
-  const docText = inputs.documentData?.extracted_text || (inputs as any).contextText || (inputs as any).entityValue || "";
-  const textLen = docText.length;
-  // Compute deterministic hash variance (-4 to +4) from document text
-  const hashSeed = docText.split('').reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) % 10007, 0);
-  const microVariance = (hashSeed % 9) - 4;
+  // ============================================================================
+  // AUDITABLE HARD SAFETY RULES (CAPS — PRESERVE DIRECTION, NO RANDOM NUMBERS)
+  // ============================================================================
 
-  const flagCount = inputs.documentData?.triggered_flags?.length || 0;
-  const criticalFlags = inputs.documentData?.triggered_flags?.filter(f => f.severity === 'critical' || f.rule === 'known_fake_company' || f.rule === 'payment_demand' || f.rule === 'direct_selection') || [];
-  const highFlags = inputs.documentData?.triggered_flags?.filter(f => f.severity === 'high') || [];
-
+  // Rule 1: Lookalike domain impersonation cap
   if (inputs.domainData?.lookalike_detected) {
-    rawTrust = Math.max(12, Math.min(25, 20 + microVariance));
-    hardCaps.push(`Lookalike Domain Impersonation (Dynamic Score: ${rawTrust}%)`);
-  } else if (criticalFlags.length > 0 || inputs.documentData?.has_fee_demand || inputs.documentData?.is_confirmed_impersonation) {
-    // Dynamic critical score based on flag severity count (range 10% - 34%)
-    let baseCrit = 30 - (criticalFlags.length * 4) - (highFlags.length * 2);
-    if (inputs.documentData?.has_fee_demand) baseCrit -= 6;
-    rawTrust = Math.max(10, Math.min(34, Math.round(baseCrit + microVariance)));
-    hardCaps.push(`Critical Recruitment Scam Indicator (${criticalFlags.length} Critical Rules: Dynamic Score ${rawTrust}%)`);
-  } else if (companyScore >= 80 && !inputs.domainData?.lookalike_detected && !inputs.recruiterData?.is_free_provider && !inputs.documentData?.has_fee_demand) {
-    // Verified corporate signals + corporate email: high trust (88% - 97%)
-    let baseGen = Math.max(88, Math.min(97, Math.round(92 + (microVariance % 4))));
-    rawTrust = baseGen;
-  } else if (inputs.documentData && typeof inputs.documentData.final_score === 'number') {
-    // InternShield Ensemble Score
-    rawTrust = inputs.documentData.final_score;
-  } else if (inputs.documentData && (criticalFlags.length > 0 || (flagCount >= 3 && highFlags.length >= 2))) {
-    // Dynamic moderate/suspicious score (range 36% - 64%)
-    let baseMod = 62 - (flagCount * 5) - (highFlags.length * 3);
-    rawTrust = Math.max(36, Math.min(64, Math.round(baseMod + microVariance)));
-    hardCaps.push(`Multiple Structural Anomalies (${flagCount} Flags: Dynamic Score ${rawTrust}%)`);
-  } else {
-    rawTrust = Math.max(20, Math.min(92, Math.round(rawTrust + microVariance)));
+    const prevTrust = rawTrust;
+    rawTrust = Math.min(rawTrust, 25);
+    hardCaps.push(`LOOKALIKE_DOMAIN_CAP: Trust capped to max 25 (calculated: ${Math.round(prevTrust)}) — suspected domain impersonation`);
   }
 
-  const finalTrust = Math.round(rawTrust);
+  // Rule 2: Confirmed fee demand or confirmed impersonation cap
+  if (inputs.documentData?.has_fee_demand || inputs.documentData?.is_confirmed_impersonation) {
+    const prevTrust = rawTrust;
+    rawTrust = Math.min(rawTrust, 20);
+    hardCaps.push(`PAYMENT_REQUEST_CAP: Trust capped to max 20 (calculated: ${Math.round(prevTrust)}) — confirmed candidate payment demand`);
+  }
 
-  // Calculate overall confidence (independent of risk)
+  // Rule 3: Known malicious IOC threat feed cap
+  if (inputs.threatData?.known_threat || inputs.threatData?.max_severity === 'CRITICAL') {
+    const prevTrust = rawTrust;
+    rawTrust = Math.min(rawTrust, 15);
+    hardCaps.push(`MALICIOUS_IOC_CAP: Trust capped to max 15 (calculated: ${Math.round(prevTrust)}) — confirmed threat intelligence match`);
+  }
+
+  const finalTrust = Math.round(Math.max(1, Math.min(99, rawTrust)));
+
+  // ============================================================================
+  // Evidence Confidence Calculation (Dynamic, Separate from Trust Score)
+  // ============================================================================
   const completeness = calculateEvidenceCompleteness(inputs);
   const avgConfidence = (
-    mlConfidence * 0.25 +
-    companyConfidence * 0.15 +
-    domainConfidence * 0.15 +
-    recruiterConfidence * 0.10 +
-    documentConfidence * 0.10 +
-    threatConfidence * 0.10 +
-    communityConfidence * 0.10 +
-    consistencyConfidence * 0.05
+    docAuthConfidence * weights.document_authenticity +
+    companyConfidence * weights.company_registry +
+    domainConfidence * weights.domain_intelligence +
+    recruiterConfidence * weights.recruiter_email +
+    documentConfidence * weights.financial_fee_safety +
+    certConfidence * weights.certificate_verification +
+    mlConfidence * weights.ml_probability +
+    threatConfidence * weights.threat_intelligence +
+    communityConfidence * weights.community_evidence +
+    consistencyConfidence * weights.consistency_conflict
   );
-  const finalConfidence = Math.round(avgConfidence * ((completeness.percentage || (completeness as any).score || 80) / 100));
 
-  // Determine Risk Level & Verdict (Strict Non-Binary Calibration)
+  const finalConfidence = Math.round(
+    Math.max(10, Math.min(98, avgConfidence * (completeness.percentage / 100)))
+  );
+
+  // ============================================================================
+  // Risk Level & Verdict Calibration (Deterministic)
+  // ============================================================================
   let riskLevel: RiskLevel = "LOW";
   let verdict: DeterministicScoreResult['verdict'] = "LIKELY LEGITIMATE";
 
@@ -430,8 +650,8 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
     verdict = "LIKELY SCAM";
   }
 
-  // If evidence is sparse, report INCONCLUSIVE / INSUFFICIENT EVIDENCE
-  if ((completeness.percentage || (completeness as any).score || 80) < 30 && finalTrust >= 45 && finalTrust <= 75) {
+  // Sparse evidence guard
+  if (completeness.percentage < 25 && finalTrust >= 40 && finalTrust <= 70) {
     verdict = "INSUFFICIENT_EVIDENCE";
   }
 
@@ -447,5 +667,6 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
     positive_signals: positiveSignals,
     warning_signals: warningSignals,
     critical_signals: criticalSignals,
+    scoring_model_version: SCORING_MODEL_VERSION,
   };
 }

@@ -144,7 +144,7 @@ export async function shareReport(scanId: string, token?: string): Promise<strin
 export async function getThreatIntel(): Promise<any> {
   try {
     const res = await safeFetch<{ threats: any[]; indicators: any[] }>('/threats');
-    return res.threats || res.data?.threats || (res as any).indicators || [];
+    return (res as any).threats || res.data?.threats || (res as any).indicators || [];
   } catch {
     return [];
   }
@@ -155,12 +155,7 @@ export async function getAnalytics(): Promise<any> {
     const res = await safeFetch<{ stats: any; analytics: any }>('/analytics');
     return res.data?.stats || res.data?.analytics || (res as any).stats || (res as any).analytics || null;
   } catch {
-    return {
-      total_scans: 1284,
-      high_risk_scans: 312,
-      avg_trust_score: 84,
-      scams_prevented: 312,
-    };
+    return null; // Backend unavailable — caller must show "Analytics unavailable" message
   }
 }
 

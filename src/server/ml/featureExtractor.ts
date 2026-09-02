@@ -49,20 +49,20 @@ export function extractMLFeatures(ctx: {
   const { companyData, domainData, recruiterData, documentData, certificateData, threatData } = ctx;
 
   const vector: MLFeatureVector = {
-    company_registered: companyData?.status === 'ACTIVE' || companyData?.registry_status === 'VERIFIED_INDEPENDENTLY' ? 1 : 0,
+    company_registered: companyData?.status === 'ACTIVE' || (companyData?.registry_status as string) === 'VERIFIED_INDEPENDENTLY' || (companyData?.registry_status as string) === 'LOCAL_REFERENCE_FOUND' ? 1 : 0,
     company_active: companyData?.status === 'ACTIVE' ? 1 : 0,
     domain_age_days: domainData?.age_days ? Math.min(domainData.age_days, 1825) / 1825 : 0, // normalized up to 5 years
     domain_lookalike: domainData?.lookalike_detected ? 1 : 0,
     domain_ssl_valid: domainData?.ssl_valid ? 1 : 0,
     domain_has_mx: domainData?.has_dns ? 1 : 0,
     email_free_provider: recruiterData?.is_free_provider ? 1 : 0,
-    email_domain_match: recruiterData?.domain_alignment === 'MATCH' ? 1 : 0,
+    email_domain_match: (recruiterData?.domain_alignment as string) === 'MATCH' || (recruiterData?.domain_alignment as string) === 'EXACT_MATCH' ? 1 : 0,
     fee_demand_detected: documentData?.has_fee_demand ? 1 : 0,
     payment_handle_present: (documentData?.requested_fees?.length ?? 0) > 0 ? 1 : 0,
     urgency_signals: /immediate|urgent|within\s*24\s*hours|mandatory\s*before|cancel\s*offer/i.test(documentData?.extracted_text || '') ? 1 : 0,
     cert_verified_authentic: certificateData?.status === 'VERIFIED_AUTHENTIC' ? 1 : 0,
     cert_unverified: certificateData?.status === 'UNVERIFIED' ? 1 : 0,
-    cert_suspicious_url: certificateData?.status === 'SUSPICIOUS' || certificateData?.status === 'LIKELY_FRAUDULENT' ? 1 : 0,
+    cert_suspicious_url: certificateData?.status === 'SUSPICIOUS' || (certificateData?.status as any) === 'LIKELY_FRAUDULENT' ? 1 : 0,
     threat_iocs_matched: threatData?.indicators?.length ?? 0,
   };
 

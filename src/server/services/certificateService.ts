@@ -190,7 +190,7 @@ export async function verifyCertificate(
   }
 
   // Final Status & Authenticity Confidence Calculation
-  if (status === "SUSPICIOUS" || status === "LIKELY_FRAUDULENT") {
+  if (status === "SUSPICIOUS" || (status as any) === "LIKELY_FRAUDULENT") {
     authenticityConfidence = 20;
     verificationLevel = 9;
   } else if ((qrDomainMatch && idVerified && issuerVerified) || (issuerVerified && idVerified && !verifyUrl)) {
@@ -218,7 +218,7 @@ export async function verifyCertificate(
       ? `Certificate shows strong indicators of authenticity matching ${issuerName || 'the issuer'} conventions, but lacks live cryptographic endpoint callback.`
       : status === "SUSPICIOUS"
       ? "Certificate presents anomalies such as mismatched verification endpoints or non-standard identifier formatting."
-      : status === "LIKELY_FRAUDULENT"
+      : (status as any) === "LIKELY_FRAUDULENT"
       ? "Certificate presents strong evidence of fabrication, including deceptive verification endpoints or counterfeit issuer domains."
       : "Certificate authenticity status is UNVERIFIED due to insufficient independent registry evidence. This does not mean the certificate is fraudulent.";
 

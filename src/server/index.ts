@@ -172,22 +172,31 @@ app.get(['/api/health', '/health'], async (req, res) => {
     dbStatus = "DISCONNECTED";
   }
 
+  const vtOk = !!process.env.VIRUSTOTAL_API_KEY;
+  const gsbOk = !!(process.env.SAFE_BROWSING_API_KEY || process.env.GOOGLE_SAFE_BROWSING_API_KEY);
+  const aipOk = !!process.env.ABUSEIPDB_API_KEY;
   const aiReady = !!process.env.OPENAI_API_KEY || !!process.env.GEMINI_API_KEY || !!process.env.GOOGLE_AI_KEY;
 
   const healthData = {
     status: 'online',
-    version: '1.0.0',
+    version: '2.0.0',
+    scoring_model_version: 'LEGITIFY-SCORE-v2.0',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     services: {
       database: dbStatus,
-      ml: "READY",
-      ocr: "READY",
-      domain: "READY",
-      registry: "READY",
+      ml: "READY",          // Supervised local SVM classifier
+      ocr: "READY",         // Local Tesseract WASM
+      domain: "READY",      // Local OS DNS & RDAP
+      registry: "LOCAL_REFERENCE_ONLY", // Honest status: local reference only, not live MCA21
       community_search: "AVAILABLE",
-      threat_intel: "READY",
-      ai: aiReady ? "READY" : "DETERMINISTIC_FALLBACK"
+      threat_intel: (vtOk || gsbOk || aipOk) ? "READY" : "DEGRADED",
+      ai: aiReady ? "READY" : "DEGRADED"
+    },
+    service_notes: {
+      registry: "Company registry operates from local reference dataset. Live MCA21 statutory API is not configured.",
+      threat_intel: (vtOk || gsbOk || aipOk) ? "Live threat intelligence feeds active." : "Operating in degraded mode without live threat intelligence API keys.",
+      ai: aiReady ? "AI reasoning active." : "Operating with deterministic fallback synthesis.",
     },
     ml_model_version: '1.2.0-kaggle-supervised',
     environment: {
@@ -298,7 +307,7 @@ app.get(['/api/system/status', '/api/providers/status'], async (req, res) => {
       { name: "Supervised Kaggle ML Model v1.2.0",   category: "ML_RISK",           status: "CONNECTED",   mode: "LOCAL_INFERENCE" },
       { name: "Multi-Tier OCR Engine (WASM + EasyOCR)", category: "DOCUMENT_OCR",  status: "CONNECTED",   mode: "LOCAL_ENGINE" },
       { name: "DNS / RDAP / TLS Inspector",           category: "DOMAIN_INTEL",     status: "CONNECTED",   mode: "AUTHORITATIVE_LOOKUP" },
-      { name: "MCA / Statutory Corporate Registry",  category: "COMPANY_REGISTRY", status: "CONNECTED",   mode: "STATUTORY_AUTHORITY" },
+      { name: "Company Registry (Local Reference)",   category: "COMPANY_REGISTRY", status: "LOCAL_REFERENCE_ONLY", mode: "LOCAL_REFERENCE_ONLY" },
       { name: "Public Forum Corroboration Engine",   category: "COMMUNITY_SEARCH", status: "CONNECTED",   mode: "PUBLIC_FORUM_CORROBORATION" },
       { name: "Web Intelligence & Complaint Clusterer", category: "WEB_INTEL",    status: "CONNECTED",   mode: "LIVE_WEB_SEARCH" },
       { name: "VirusTotal v3 Threat Intelligence",   category: "THREAT_INTEL",     status: s(vtOk),       mode: "LIVE_FEED" },
@@ -736,6 +745,40 @@ app.post(['/api/scans', '/api/scan', '/scans', '/scan'], upload.single('file'), 
 });
 
 // ----------------------------------------------------------------------------
+// 1.5. POST /api/scans/:id/reinvestigate - Fresh Real-Time Re-Investigation
+// ----------------------------------------------------------------------------
+app.post(['/api/scans/:id/reinvestigate', '/api/scan/:id/reinvestigate'], async (req, res) => {
+  try {
+    const scanId = req.params.id;
+    const existing = inMemoryScanHistory.find(s => s.id === scanId);
+    if (!existing || !existing.report) {
+      return res.status(404).json({ success: false, error: 'Scan record not found' });
+    }
+
+    const report = existing.report;
+    const { runScanPipeline } = await import('./services/scanPipeline');
+    const freshReport = await runScanPipeline({
+      userId: existing.user_id,
+      entityType: report.entity_type,
+      entityValue: report.entity_name,
+      contextText: (report.document_analysis?.extracted_entities as any)?.raw_text || report.entity_name,
+    });
+
+    // Update in-memory record with new fresh investigation
+    existing.report = freshReport;
+    existing.trust_score = freshReport.trust_score;
+    existing.confidence_score = freshReport.confidence;
+    existing.risk_level = freshReport.risk_level;
+    existing.verdict = freshReport.verdict;
+    existing.updated_at = new Date().toISOString();
+
+    res.status(200).json({ success: true, report: freshReport });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Reinvestigation failed' });
+  }
+});
+
+// ----------------------------------------------------------------------------
 // 2. GET /api/scans (User-Isolated Scan History + Admin Full Registry)
 // ----------------------------------------------------------------------------
 app.get(['/api/scans', '/api/scan/history'], async (req, res) => {
@@ -911,7 +954,7 @@ app.get(['/api/analytics', '/analytics'], async (_req, res) => {
     const { data: scans } = await supabaseAdmin.from('scans').select('risk_level, trust_score, created_at').limit(100);
     const total = scans?.length || 0;
     const highRisk = scans?.filter(s => s.risk_level === 'HIGH' || s.risk_level === 'CRITICAL').length || 0;
-    const avgTrust = total > 0 ? Math.round(scans!.reduce((acc, s) => acc + (s.trust_score || 0), 0) / total) : 82;
+    const avgTrust = total > 0 ? Math.round(scans!.reduce((acc, s) => acc + (s.trust_score || 0), 0) / total) : 0;
 
     res.json({
       success: true,
@@ -947,7 +990,8 @@ app.get(['/api/audit-logs', '/audit-logs'], async (req, res) => {
 // ----------------------------------------------------------------------------
 app.post(['/api/reports/:id/share', '/api/report/:id/share'], async (req, res) => {
   try {
-    const { id } = req.params;
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : (rawId as string);
     const { userId = '' } = req.body;
     const token = await createShareToken(id, userId);
     res.json({ success: true, token, share_url: `/shared-report/${token}` });
@@ -958,7 +1002,8 @@ app.post(['/api/reports/:id/share', '/api/report/:id/share'], async (req, res) =
 
 app.get(['/api/shared-report/:token', '/api/shared-reports/:token', '/api/report/shared/:token'], async (req, res) => {
   try {
-    const { token } = req.params;
+    const rawToken = req.params.token;
+    const token = Array.isArray(rawToken) ? rawToken[0] : (rawToken as string);
     const report = await getReportByShareToken(token);
     if (!report) return res.status(404).json({ success: false, error: 'Shared report not found' });
     res.json({ success: true, report });

@@ -146,7 +146,7 @@ export function buildEntityGraph(ctx: {
         to: issuerId,
         label: "ISSUED_BY",
         type: "ISSUED_BY",
-        status: ctx.certificateData.issuer_verified ? "verified" : "unverified",
+        status: ctx.certificateData.issuer_verified ? "verified" : "neutral",
       });
     }
 

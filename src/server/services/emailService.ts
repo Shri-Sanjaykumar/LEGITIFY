@@ -86,14 +86,14 @@ export function analyzeRecruiterEmail(
       category: "RECRUITER",
       evidence_type: "ORGANIZATIONAL_EMAIL_DOMAIN",
       source_name: "Email Domain Authority Inspector",
-      title: `Corporate Email Domain Verified (@${senderDomain})`,
+      title: `Corporate Domain Detected (@${senderDomain})`,
       snippet: `Sender address operates on custom domain '${senderDomain}'.`,
-      evidence_text: `Communication originates from custom organizational domain '${senderDomain}'.`,
+      evidence_text: `Communication originates from custom organizational domain '${senderDomain}'. Domain alignment requires the domain to also match the claimed company.`,
       evidence_strength: "STRONG",
       status: "VERIFIED",
       severity: "INFO",
       verified: true,
-      confidence: 95.0,
+      confidence: 90.0,
     });
     score_modifier += 15;
   }
@@ -119,16 +119,16 @@ export function analyzeRecruiterEmail(
       category: "CONSISTENCY",
       evidence_type: "RECRUITER_COMPANY_DOMAIN_ALIGNED",
       source_name: "Identity Alignment Engine",
-      title: "Recruiter Domain Confirmed Aligned with Organization",
+      title: "Domain Alignment: Recruiter Domain Matches Company Domain",
       snippet: `Sender domain '@${senderDomain}' matches official corporate domain '${claimedCompanyDomain}'.`,
-      evidence_text: `Sender address domain matches verified company web domain.`,
+      evidence_text: `Sender address domain matches verified company web domain. NOTE: Domain alignment is a positive indicator, but does NOT independently prove that the specific individual is authorized to extend offers on behalf of the company.`,
       evidence_strength: "STRONG",
       status: "VERIFIED",
       severity: "INFO",
       verified: true,
-      confidence: 95.0,
+      confidence: 90.0,
     });
-    score_modifier += 20;
+    score_modifier += 15;
   }
 
   return { data, evidence, score_modifier };

@@ -67,6 +67,7 @@ export interface DocumentAnalysisResult extends DocumentExtractionResult {
     urgency_phrases: string[];
   };
   risk_signals: string[];
+  extracted_claims?: any[];
 }
 
 const KNOWN_FAKE_COMPANIES = [
@@ -156,14 +157,23 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
     if (ocrText && ocrText.trim().length > 20) return ocrText.trim();
   } catch {}
 
-  // Tier 2: Dynamic lazy pdf-parse
+  // Tier 2: Dynamic lazy pdf-parse (handles v1 function and v2 PDFParse class)
   try {
     const pdfModule = await import('pdf-parse');
-    const parseFn = (pdfModule as any).default || pdfModule;
-    if (typeof parseFn === 'function') {
-      const data = await parseFn(buffer);
-      const parsed = data?.text?.trim() || '';
-      if (parsed.length > 20) return parsed;
+    if ((pdfModule as any).PDFParse) {
+      const PDFParseClass = (pdfModule as any).PDFParse;
+      const parser = new PDFParseClass(new Uint8Array(buffer));
+      await parser.load();
+      const res = await parser.getText();
+      const parsedText = res?.pages?.map((p: any) => p.text).join('\n\n') || (typeof res === 'string' ? res : res?.text || '');
+      if (parsedText.trim().length > 20) return parsedText.trim();
+    } else {
+      const parseFn = (pdfModule as any).default || pdfModule;
+      if (typeof parseFn === 'function') {
+        const data = await parseFn(buffer);
+        const parsed = data?.text?.trim() || '';
+        if (parsed.length > 20) return parsed;
+      }
     }
   } catch {}
 
@@ -262,8 +272,14 @@ export function extractDocumentSignals(text: string, filename?: string, mimeType
     }
   }
 
+  const hasFeeNegation = /(?:no\s+(?:registration|application|processing|training|onboarding|security|internship)?\s*fee|never\s+(?:charge|collect|demand|request|ask)|do\s+not\s+(?:charge|collect|demand|request|ask)|will\s+not\s+(?:charge|collect|demand|request|ask)|free\s+of\s+(?:any\s+)?(?:charge|cost|fee)|(?:fee|payment)\s+(?:is\s+)?not\s+required|without\s+any\s+fee)/i.test(text);
+
   let fraudMatches = 0;
   for (const [pattern, penalty, desc] of FRAUD_INDICATORS) {
+    const isFeePattern = desc.toLowerCase().includes('fee') || desc.toLowerCase().includes('deposit') || desc.toLowerCase().includes('payment') || desc.toLowerCase().includes('money');
+    if (isFeePattern && hasFeeNegation) {
+      continue; // Respect explicit negation clauses
+    }
     if (pattern.test(textLower)) {
       fraudPenalty += penalty;
       fraudMatches++;
@@ -381,9 +397,8 @@ export function extractDocumentSignals(text: string, filename?: string, mimeType
   }
 
   // Payment demands
-  const hasNoFeeDisclaimer = /(?:no\s*(?:fees?|charges?|cost)|never\s*charges?\s*fees?|free\s*of\s*(?:cost|charge)|without\s*any\s*fee|does\s*not\s*charge)/i.test(text);
   const feeTriggerRegex = /(?:registration\s*fee|training\s*(?:fee|cost|charge)|security\s*deposit|laptop\s*deposit|caution\s*deposit|mandatory\s*(?:fee|payment|deposit|charge)|pay\s*(?:mandatory|immediately|before\s*joining|to\s*join|security\s*deposit|registration|via\s*upi)|application\s*fee|onboarding\s*fee|document\s*verification\s*charge|id\s*card\s*fee|uniform\s*deposit|processing\s*fee|deposit\s*(?:of\s*)?(?:₹|rs\.?|inr|\$)\s*[0-9,]+)/gi;
-  const isFeeDemand = (feeTriggerRegex.test(text) || upiMatches.length > 0) && !hasNoFeeDisclaimer;
+  const isFeeDemand = (feeTriggerRegex.test(text) || upiMatches.length > 0) && !hasFeeNegation;
   if (isFeeDemand) {
     ruleSuspicion += 1.0; ruleCount++;
     flags.push({

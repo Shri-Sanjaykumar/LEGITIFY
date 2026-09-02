@@ -203,12 +203,13 @@ export function evaluateRules(ctx: RuleEngineContext): {
   // ----------------------------------------------------------------------------
   // R007: Threat IOC Registry Match
   // ----------------------------------------------------------------------------
-  const threatCount = ctx.threatData?.matches?.length || (ctx.threatData as any)?.indicators?.length || 0;
-  if (threatCount > 0) {
+  const verifiedThreats = ctx.threatData?.matches?.filter(m => m.source !== "Heuristic Pattern Engine") || [];
+  const threatCount = verifiedThreats.length;
+  if (threatCount > 0 || ctx.threatData?.known_threat) {
     const r007: RuleEvaluation = {
       rule_id: "R007",
       name: "Active Threat Intelligence Match",
-      description: `Matched ${threatCount} known scam or malicious IOCs in intelligence database.`,
+      description: `Matched ${threatCount || 1} known scam or malicious IOCs in intelligence database.`,
       triggered: true,
       severity: "CRITICAL",
       score_impact: -40,

@@ -11,7 +11,8 @@ const MAJOR_TECH_DOMAINS = [
   "netflix.com", "adobe.com", "salesforce.com", "oracle.com", "ibm.com",
   "tcs.com", "infosys.com", "wipro.com", "hcltech.com", "techmahindra.com",
   "cognizant.com", "accenture.com", "deloitte.com", "capgemini.com",
-  "tatamotors.com", "goindigo.in", "airindia.com", "spicejet.com", "reliance.com"
+  "tatamotors.com", "goindigo.in", "airindia.com", "spicejet.com", "reliance.com",
+  "qualcomm.com", "intel.com", "cisco.com"
 ];
 
 export type DomainData = DomainAnalysisData;
@@ -124,9 +125,13 @@ export async function analyzeDomain(domainInput: string): Promise<{
           const now = new Date();
           const daysRemaining = Math.round((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           socket.end();
+          const rawO = cert.issuer?.O;
+          const issuerOrg = Array.isArray(rawO) ? rawO.join(', ') : rawO;
+          const rawCN = cert.issuer?.CN;
+          const issuerCN = Array.isArray(rawCN) ? rawCN.join(', ') : rawCN;
           resolve({
             valid: socket.authorized !== false,
-            issuer: cert.issuer?.O || cert.issuer?.CN || 'Unknown CA',
+            issuer: issuerOrg || issuerCN || 'Unknown CA',
             daysRemaining,
           });
         } else {
@@ -146,18 +151,18 @@ export async function analyzeDomain(domainInput: string): Promise<{
     if (ssl.valid) {
       evidence.push({
         category: "DOMAIN",
-        evidence_type: "SSL_CERTIFICATE",
+        evidence_type: "TLS_CERTIFICATE_VALID",
         source_name: "TLS / X.509 Certificate Chain",
-        title: "Valid HTTPS / TLS Certificate",
+        title: "Valid TLS Certificate (Infrastructure Fact)",
         snippet: `Issued by ${ssl.issuer || 'Trusted CA'} · ${ssl.daysRemaining || 0} days remaining`,
-        evidence_text: `Domain presents a valid SSL/TLS certificate issued by ${ssl.issuer}.`,
-        evidence_strength: "STRONG",
+        evidence_text: `Domain presents a valid TLS certificate issued by ${ssl.issuer}. NOTE: Valid TLS confirms encrypted transport only. It is an infrastructure fact, NOT proof of organizational authenticity or that the domain owner is who they claim to be.`,
+        evidence_strength: "MEDIUM",
         status: "VERIFIED",
         severity: "INFO",
         verified: true,
-        confidence: 100.0,
+        confidence: 90.0,
       });
-      score_modifier += 10;
+      score_modifier += 5;
     }
   } catch {
     // SSL check failed

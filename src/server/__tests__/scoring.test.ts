@@ -34,22 +34,22 @@ describe('Deterministic Scoring Engine', () => {
         normalized_name: 'tcs',
         registration_number: 'L22210MH1995PLC084781',
         status: 'ACTIVE',
-        registry_status: 'VERIFIED_INDEPENDENTLY',
+        registry_status: 'VERIFIED' as any,
         domain: 'tcs.com',
-      },
+      } as any,
       domainData: {
         domain: 'tcs.com',
         has_dns: true,
         ssl_valid: true,
         age_days: 1500,
         lookalike_detected: false,
-      },
+      } as any,
       recruiterData: {
         email: 'recruitment@tcs.com',
         domain: 'tcs.com',
-        domain_alignment: 'MATCH',
+        domain_alignment: 'EXACT_MATCH' as any,
         is_free_provider: false,
-      },
+      } as any,
       evidence,
     });
 
@@ -79,7 +79,7 @@ describe('Deterministic Scoring Engine', () => {
         suspicious_patterns: ['Fee demand'],
         extracted_entities: {},
         evidence,
-      },
+      } as any,
       evidence,
     });
 

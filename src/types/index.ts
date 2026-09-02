@@ -35,6 +35,8 @@ export interface RAGKnowledgeChunk {
   publication_date?: string;
   authority_level: "TIER_1_AUTHORITATIVE" | "TIER_2_HIGH_QUALITY" | "TIER_3_COMMUNITY";
   similarity_score?: number;
+  match_score?: number;
+  match_method?: "KEYWORD_RULE" | "VECTOR_SEMANTIC";
   metadata?: Record<string, any>;
 }
 
@@ -60,18 +62,6 @@ export interface FalsePositiveCheckResult {
 // LEGITIFY DOMAIN & TYPE DEFINITIONS
 // Evidence-First Trust Intelligence Matrix
 // ==============================================================================
-
-export interface DocumentClaim {
-  id: string;
-  claim_type: "ORGANIZATION" | "RECRUITER" | "CONTACT_EMAIL" | "PHONE" | "WEBSITE_DOMAIN" | "CIN_REGISTRATION" | "ROLE_DESIGNATION" | "STIPEND_COMPENSATION" | "JOINING_DATE" | "LOCATION" | "PAYMENT_REQUIREMENT" | "CERTIFICATE_ID" | "QR_CODE";
-  raw_claim_text: string;
-  normalized_value: string;
-  confidence: number;
-  verification_status: "VERIFIED" | "CONTRADICTED" | "UNVERIFIED" | "SUSPICIOUS" | "NOT_APPLICABLE";
-  retrieved_reality?: string;
-  evidence_source?: string;
-  explanation: string;
-}
 
 export type ScanEntityType =
   | "company"
@@ -111,7 +101,9 @@ export type Verdict =
   | "MODERATE RISK"
   | "HIGH RISK"
   | "LIKELY SCAM"
-  | "INSUFFICIENT EVIDENCE";
+  | "INSUFFICIENT_EVIDENCE"
+  | "INSUFFICIENT EVIDENCE"
+  | "NEUTRAL / REVIEW REQUIRED";
 
 export type CertificateStatus =
   | "VERIFIED_AUTHENTIC"
@@ -204,6 +196,10 @@ export interface EvidenceCompleteness {
     threat: { observed: number; expected: number; percentage: number };
   };
   missing_evidence: string[];
+  score?: number;
+  percentage?: number;
+  category?: string;
+  summary?: string;
 }
 
 export interface GraphNode {
@@ -263,20 +259,13 @@ export interface DeterministicScoreResult {
   confidence_score: number; // 0 - 100
   risk_level: RiskLevel;
   verdict: Verdict;
-  components: {
-    company: ScoreComponent;
-    domain: ScoreComponent;
-    recruiter: ScoreComponent;
-    document: ScoreComponent;
-    certificate: ScoreComponent;
-    threat: ScoreComponent;
-    public_evidence: ScoreComponent;
-    consistency: ScoreComponent;
-  };
+  components: Record<string, ScoreComponent>;
   positive_signals: string[];
   warning_signals: string[];
   critical_signals: string[];
   rules_triggered: RuleEvaluation[];
+  hard_caps_applied?: string[];
+  scoring_model_version?: string;
 }
 
 export interface ScanRecord {
@@ -438,7 +427,18 @@ export interface LegitifyReport {
     rules: number;
     nlp: number;
     ner: number;
+    document_authenticity?: number;
+    company_legal?: number;
+    domain_security?: number;
+    recruiter_auth?: number;
+    financial_safety?: number;
+    certificate_auth?: number;
+    ml_fraud_model?: number;
+    threat_intel?: number;
+    community_evidence?: number;
+    consistency_cross_check?: number;
   };
+  components?: Record<string, ScoreComponent>;
   triggered_flags?: {
     rule: string;
     severity: "critical" | "high" | "medium" | "low" | "info";
@@ -446,6 +446,11 @@ export interface LegitifyReport {
     score: number;
   }[];
   next_steps?: string[];
+  entity_value?: string;
+  evidence?: EvidenceItem[];
+  ai_synthesis?: any;
+  company_record?: any;
+  has_fee_demand?: boolean;
 }
 
 export interface ProviderResult<T = any> {

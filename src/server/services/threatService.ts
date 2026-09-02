@@ -109,8 +109,13 @@ export async function checkThreatIndicators(
   }
 
   // 2. Pattern Matching on Text Context (e.g. email or document body)
+  const hasFeeNegation = /(?:no\s+(?:registration|application|training|processing|security)\s+fee|never\s+charge|free\s+of\s+charge|no\s+payment\s+is\s+required|not\s+require\s+(?:any\s+)?fee)/i.test(contextText);
+
   if (contextText) {
     for (const pattern of FRAUD_PATTERNS) {
+      if ((pattern.type === "UPFRONT_FEE_REQUEST" || pattern.type === "DIRECT_PAYMENT_DEMAND") && hasFeeNegation) {
+        continue;
+      }
       if (pattern.regex.test(contextText)) {
         matches.push({
           indicator_type: "PATTERN",
@@ -296,11 +301,14 @@ export async function checkThreatIndicators(
   else if (matches.some(m => m.severity === "MEDIUM")) maxSeverity = "MEDIUM";
   else if (matches.some(m => m.severity === "LOW")) maxSeverity = "LOW";
 
+  const hasVerifiedThreat = matches.some(m => m.source !== "Heuristic Pattern Engine" && (m.severity === "CRITICAL" || m.severity === "HIGH"));
+
   const data: ThreatData = {
     matches,
     count: matches.length,
     max_severity: maxSeverity,
     sources_checked: sourcesChecked,
+    known_threat: hasVerifiedThreat,
   };
 
   return { data, matches, evidence };

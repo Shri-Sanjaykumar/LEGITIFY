@@ -35,7 +35,8 @@ export class LegitifyApiError extends Error {
 
 function resolveApiBase(): string {
   if (typeof window !== 'undefined') {
-    const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
+    const env = (import.meta as any).env || {};
+    const envUrl = env.VITE_API_URL || env.VITE_API_BASE_URL;
     if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1') && envUrl !== '/api') {
       return envUrl.replace(/\/$/, '');
     }

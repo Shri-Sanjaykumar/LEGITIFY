@@ -113,23 +113,28 @@ export function retrieveRAGKnowledge(query: {
       score += 30;
     }
     if (score > 0) {
-      matched.push({ ...chunk, score, similarity_score: Math.min(0.99, (score + 20) / 100) });
+      matched.push({
+        ...chunk,
+        score,
+        match_score: Math.min(100, score),
+        match_method: "KEYWORD_RULE",
+      });
     }
   }
 
   // If no specific company rule matched, include standard regulatory & anti-fraud baselines
   if (matched.length === 0) {
     matched.push(
-      { ...KNOWLEDGE_STORE[0], score: 20, similarity_score: 0.85 },
-      { ...KNOWLEDGE_STORE[1], score: 20, similarity_score: 0.80 },
-      { ...KNOWLEDGE_STORE[6], score: 20, similarity_score: 0.75 }
+      { ...KNOWLEDGE_STORE[0], score: 30, match_score: 30, match_method: "KEYWORD_RULE" },
+      { ...KNOWLEDGE_STORE[1], score: 25, match_score: 25, match_method: "KEYWORD_RULE" },
+      { ...KNOWLEDGE_STORE[6], score: 20, match_score: 20, match_method: "KEYWORD_RULE" }
     );
   }
 
-  matched.sort((a, b) => b.score - a.score);
+  matched.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
   const topChunks = matched.slice(0, 4);
 
-  const summary = topChunks.map((c, i) => `[RAG-${i + 1}] (${c.authority_level}) ${c.title}: ${c.content}`).join('\n\n');
+  const summary = topChunks.map((c, i) => `[RAG-${i + 1}] (${c.authority_level}) [${c.match_method || 'KEYWORD_RULE'}: ${c.match_score || 0}%] ${c.title}: ${c.content}`).join('\n\n');
 
   return { chunks: topChunks, summary };
 }

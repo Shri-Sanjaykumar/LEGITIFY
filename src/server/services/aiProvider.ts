@@ -51,7 +51,7 @@ export function sanitizeCompanyName(context: Record<string, any>): string {
 
   const raw = String(context.company_name || context.entity_name || context.entity_value || "");
   if (!raw || raw.match(/(\.(png|jpg|jpeg|pdf)$|^images|^image\s*\(|^screenshot|^upload)/i)) {
-    return detected || "IndiGo / InterGlobe Aviation Limited";
+    return detected || "Unknown Organization";
   }
   return raw;
 }

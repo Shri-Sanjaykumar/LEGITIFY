@@ -19,6 +19,8 @@ import {
   getAnalytics,
 } from "../lib/api";
 import { LegitifyReport, ScanRecord } from "../types";
+import { PublicExperiencePanel } from "./components/PublicExperiencePanel";
+import { ForensicExplanationPanel } from "./components/ForensicExplanationPanel";
 
 // ================================================================
 // TYPES & THEMES
@@ -691,7 +693,7 @@ function UserScanView({
             Multi-Factor Offer & Company Scanner
           </h2>
           <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
-            Upload an offer letter (PDF/Image) or paste text. Our AI evaluates it across 8 dimensions of authenticity.
+            Upload an offer letter (PDF/Image) or paste text. Our forensic engine evaluates it across 10 deterministic dimensions of authenticity.
           </p>
         </div>
 
@@ -849,17 +851,35 @@ function UserReportView({
   report: rawReport,
   onNewScan,
   onOpenCopilot,
+  onUpdateReport,
 }: {
   report: LegitifyReport;
   onNewScan: () => void;
   onOpenCopilot: () => void;
+  onUpdateReport?: (newReport: LegitifyReport) => void;
 }) {
-  const report: LegitifyReport = (rawReport as any)?.report || rawReport || {};
+  const [reportState, setReportState] = useState<LegitifyReport>((rawReport as any)?.report || rawReport || {});
+
+  useEffect(() => {
+    setReportState((rawReport as any)?.report || rawReport || {});
+  }, [rawReport]);
+
+  const report = reportState;
   const [downloading, setDownloading] = useState(false);
+
+  const handleReinvestigate = async () => {
+    if (!report.scan_id) return;
+    const res = await fetch(`/api/scans/${report.scan_id}/reinvestigate`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success && data.report) {
+      setReportState(data.report);
+      if (onUpdateReport) onUpdateReport(data.report);
+    }
+  };
 
   let rawName = report.company_name || report.entity_name || report.entity_value || "Investigated Offer";
   let cleanCompany = (rawName.match(/(\.(png|jpg|jpeg|pdf)$|^offer_letter|^images|^image\s*\(|^screenshot)/i))
-    ? (report.document_analysis?.extracted_entities?.detected_company || "IndiGo / InterGlobe Aviation Limited")
+    ? (report.document_analysis?.extracted_entities?.detected_company || "Investigated Organization")
     : rawName;
 
   const trustScore = typeof report.confidence_score === "number" ? Math.round(report.confidence_score) : typeof report.trust_score === "number" ? Math.round(report.trust_score) : 26;
@@ -902,9 +922,9 @@ function UserReportView({
         id: `E-00${i + 1}`,
         type: ev.category || "ANALYSIS",
         status: ev.severity === "CRITICAL" ? "CRITICAL" : ev.severity === "HIGH" ? "WARNING" : "VERIFIED",
-        source: ev.source || "LEGITIFY Engine",
-        claim: ev.description || "Finding recorded",
-        confidence: Math.round((ev.confidence_weight || 0.9) * 100),
+        source: ev.source_name || (ev as any).source || "LEGITIFY Engine",
+        claim: ev.evidence_text || ev.title || (ev as any).description || "Finding recorded",
+        confidence: Math.round(ev.confidence || ((ev as any).confidence_weight ? (ev as any).confidence_weight * 100 : 90)),
         tier: ev.severity === "CRITICAL" ? "CRITICAL" : "STRONG"
       }))
     : [
@@ -1123,53 +1143,114 @@ function UserReportView({
         </div>
       </div>
 
-{/* Section 2: Analysis Breakdown (InternShield 3 Dimension Cards) */}
+{/* Section 2: Analysis Breakdown (10 Deterministic Forensic Dimensions) */}
       <div className="space-y-4">
-        <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
-          <span>📐</span> Multi-Dimensional Forensic Breakdown
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">📐</span>
-              <div>
-                <h4 className="text-base font-black text-slate-100">Rule Engine</h4>
-                <p className="text-xs text-slate-400">Structural checks</p>
-              </div>
-            </div>
-            <div className="w-full bg-[#131822] h-3 rounded-full overflow-hidden border border-[#1E2838]">
-              <div className="bg-[#00FF87] h-full rounded-full transition-all" style={{ width: `${dimRules}%`, boxShadow: "0 0 10px #00FF87" }} />
-            </div>
-            <p className="text-right text-base font-mono font-black text-[#00FF87]">{dimRules}%</p>
-          </div>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
+            <span>📐</span> 10-Dimension Forensic Integrity Grid
+          </h3>
+          <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00FF87] border border-[#00FF87]/30 font-bold">
+            LEGITIFY-SCORE-v2.0 (100% Deterministic)
+          </span>
+        </div>
 
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🤖</span>
-              <div>
-                <h4 className="text-base font-black text-slate-100">NLP Classifier</h4>
-                <p className="text-xs text-slate-400">Language analysis</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {[
+            {
+              name: "Doc Authenticity",
+              weight: "10%",
+              score: (report as any).components?.document_authenticity?.score ?? report.dimension_scores?.document_authenticity ?? dimRules,
+              icon: "📄",
+              color: "#00FF87"
+            },
+            {
+              name: "Company Legal",
+              weight: "15%",
+              score: (report as any).components?.company?.score ?? report.dimension_scores?.company_legal ?? dimNer,
+              icon: "🏛️",
+              color: "#00F0FF"
+            },
+            {
+              name: "Domain Security",
+              weight: "10%",
+              score: (report as any).components?.domain?.score ?? report.dimension_scores?.domain_security ?? (report.domain_analysis?.ssl_valid ? 80 : 30),
+              icon: "🌐",
+              color: "#38BDF8"
+            },
+            {
+              name: "Recruiter Auth",
+              weight: "10%",
+              score: (report as any).components?.recruiter?.score ?? report.dimension_scores?.recruiter_auth ?? (report.recruiter_analysis?.free_email_provider ? 25 : 85),
+              icon: "👤",
+              color: "#A78BFA"
+            },
+            {
+              name: "Financial Safety",
+              weight: "20%",
+              score: (report as any).components?.document?.score ?? report.dimension_scores?.financial_safety ?? (report.document_analysis?.requested_fees?.length ? 5 : 90),
+              icon: "💳",
+              color: "#F43F5E"
+            },
+            {
+              name: "Certificate Auth",
+              weight: "5%",
+              score: (report as any).components?.certificate?.score ?? report.dimension_scores?.certificate_auth ?? (report.certificate_verification ? 85 : 50),
+              icon: "📜",
+              color: "#34D399"
+            },
+            {
+              name: "ML Fraud Model",
+              weight: "10%",
+              score: (report as any).components?.ml_probability?.score ?? report.dimension_scores?.ml_fraud_model ?? dimNlp,
+              icon: "🤖",
+              color: "#F59E0B"
+            },
+            {
+              name: "Threat Intel IOC",
+              weight: "5%",
+              score: (report as any).components?.threat?.score ?? report.dimension_scores?.threat_intel ?? (report.threat_intelligence?.matched_iocs_count > 0 ? 10 : 85),
+              icon: "🚨",
+              color: "#EF4444"
+            },
+            {
+              name: "Community Intel",
+              weight: "5%",
+              score: (report as any).components?.community?.score ?? report.dimension_scores?.community_evidence ?? 60,
+              icon: "👥",
+              color: "#60A5FA"
+            },
+            {
+              name: "Cross Consistency",
+              weight: "10%",
+              score: (report as any).components?.consistency?.score ?? report.dimension_scores?.consistency_cross_check ?? 75,
+              icon: "⚖️",
+              color: "#10B981"
+            },
+          ].map((dim, idx) => {
+            const dimScore = Math.round(dim.score > 1 ? dim.score : dim.score * 100);
+            return (
+              <div key={idx} className="p-5 rounded-2xl bg-[#0D1117] border border-[#1E2838] space-y-2.5 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">{dim.icon}</span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                    wt: {dim.weight}
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-200 truncate">{dim.name}</h4>
+                </div>
+                <div className="w-full bg-[#131822] h-2 rounded-full overflow-hidden border border-[#1E2838]">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${Math.min(100, Math.max(5, dimScore))}%`, backgroundColor: dimScore >= 70 ? '#00FF87' : dimScore >= 45 ? '#F59E0B' : '#FF3B5C' }}
+                  />
+                </div>
+                <p className="text-right text-xs font-mono font-extrabold" style={{ color: dimScore >= 70 ? '#00FF87' : dimScore >= 45 ? '#F59E0B' : '#FF3B5C' }}>
+                  {dimScore}/100
+                </p>
               </div>
-            </div>
-            <div className="w-full bg-[#131822] h-3 rounded-full overflow-hidden border border-[#1E2838]">
-              <div className="bg-[#00F0FF] h-full rounded-full transition-all" style={{ width: `${dimNlp}%`, boxShadow: "0 0 10px #00F0FF" }} />
-            </div>
-            <p className="text-right text-base font-mono font-black text-[#00F0FF]">{dimNlp}%</p>
-          </div>
-
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🔎</span>
-              <div>
-                <h4 className="text-base font-black text-slate-100">Entity Verification</h4>
-                <p className="text-xs text-slate-400">Company & contact checks</p>
-              </div>
-            </div>
-            <div className="w-full bg-[#131822] h-3 rounded-full overflow-hidden border border-[#1E2838]">
-              <div className="bg-[#F59E0B] h-full rounded-full transition-all" style={{ width: `${dimNer}%`, boxShadow: "0 0 10px #F59E0B" }} />
-            </div>
-            <p className="text-right text-base font-mono font-black text-[#F59E0B]">{dimNer}%</p>
-          </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1244,6 +1325,23 @@ function UserReportView({
           </div>
         </div>
       </div>
+
+      {/* Section 4.5: Multi-Signal Forensic Reasoning & Pattern Synthesis */}
+      <ForensicExplanationPanel
+        explanationSummary={(report as any).explanation_summary}
+        fraudPatterns={(report as any).fraud_patterns}
+        legitimatePatterns={(report as any).legitimate_patterns}
+        counterEvidence={(report as any).counter_evidence}
+        fraudConfidence={(report as any).fraud_confidence}
+      />
+
+      {/* Section 4.6: Real-World Public Experiences & Complaint Intelligence */}
+      <PublicExperiencePanel
+        data={(report as any).public_experience}
+        companyName={cleanCompany}
+        scanId={report.scan_id}
+        onReinvestigate={handleReinvestigate}
+      />
 
       {/* Footer Actions */}
       <div className="flex flex-wrap items-center gap-4 pt-4">
@@ -1864,7 +1962,7 @@ function AdminAnalyticsView() {
         <div className="p-8 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <p className="text-sm text-slate-400 font-mono">Avg Pipeline Latency</p>
           <p className="text-4xl font-black text-amber-400">1.2s</p>
-          <p className="text-xs text-slate-500">8-dimension fusion engine</p>
+          <p className="text-xs text-slate-500">10-dimension forensic fusion engine</p>
         </div>
       </div>
     </div>
@@ -1904,23 +2002,23 @@ function AdminMissionControl({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <span className="text-sm font-bold text-slate-400">Total Scans in DB</span>
-          <p className="text-4xl font-black text-slate-100"><AnimatedCounter value={stats?.totalScans || scans.length || 48} /></p>
-          <span className="text-xs text-[#00FF87] font-mono">Live PostgreSQL records</span>
+          <p className="text-4xl font-black text-slate-100"><AnimatedCounter value={stats?.total_scans ?? stats?.totalScans ?? scans.length ?? 0} /></p>
+          <span className="text-xs text-[#00FF87] font-mono">Live database records</span>
         </div>
         <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <span className="text-sm font-bold text-slate-400">Threats Neutralized</span>
-          <p className="text-4xl font-black text-[#FF3B5C]"><AnimatedCounter value={stats?.threatsDetected || 12} /></p>
+          <p className="text-4xl font-black text-[#FF3B5C]"><AnimatedCounter value={stats?.high_risk_scans ?? stats?.threatsDetected ?? scans.filter(s => (s.trust_score || 0) <= 35).length} /></p>
           <span className="text-xs text-[#FF3B5C] font-mono">Upfront fee & lookalikes</span>
         </div>
         <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <span className="text-sm font-bold text-slate-400">Average Trust Index</span>
-          <p className="text-4xl font-black text-[#00F0FF] text-glow-cyan">{stats?.avgTrustScore || 79}<span className="text-base font-normal text-slate-500">/100</span></p>
-          <span className="text-xs text-[#00F0FF] font-mono">8-dimension fusion avg</span>
+          <p className="text-4xl font-black text-[#00F0FF] text-glow-cyan">{stats?.avg_trust_score ?? stats?.avgTrustScore ?? (scans.length > 0 ? Math.round(scans.reduce((a, s) => a + (s.trust_score || 0), 0) / scans.length) : 0)}<span className="text-base font-normal text-slate-500">/100</span></p>
+          <span className="text-xs text-[#00F0FF] font-mono">10-dimension fusion avg</span>
         </div>
         <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2">
           <span className="text-sm font-bold text-slate-400">Active Forensics</span>
-          <p className="text-4xl font-black text-[#00FF87] text-glow-emerald">8/8 Upstream</p>
-          <span className="text-xs text-slate-400 font-mono">VirusTotal + AbuseIPDB + Gemini</span>
+          <p className="text-4xl font-black text-[#00FF87] text-glow-emerald">10 Dimensions</p>
+          <span className="text-xs text-slate-400 font-mono">Evidence-first deterministic engine</span>
         </div>
       </div>
     </div>
@@ -1967,9 +2065,21 @@ const DEFAULT_REPORT: LegitifyReport = {
   ],
   rules_evaluated: [],
   timeline: [],
-  evidence_completeness: { percentage: 85, overall_percentage: 85, missing_evidence: [] },
+  evidence_completeness: {
+    percentage: 85,
+    overall_percentage: 85,
+    missing_evidence: [],
+    breakdown: {
+      company: { observed: 1, expected: 1, percentage: 100 },
+      domain: { observed: 1, expected: 1, percentage: 100 },
+      recruiter: { observed: 1, expected: 1, percentage: 100 },
+      certificate: { observed: 0, expected: 1, percentage: 0 },
+      document: { observed: 1, expected: 1, percentage: 100 },
+      threat: { observed: 1, expected: 1, percentage: 100 },
+    },
+  },
   disclaimer: "LEGITIFY provides automated evidence-based trust scoring for recruitment fraud prevention.",
-};
+} as any;
 
 // ================================================================
 // MASTER APP COMPONENT
@@ -2093,9 +2203,9 @@ export function App() {
 
   const handleUpdateScanPrediction = async (scanId: string, updatedScore: number, updatedVerdict: string, notes: string) => {
     // 1. Update local state
-    setScans(prev => prev.map(s => s.id === scanId ? { ...s, trust_score: updatedScore, verdict: updatedVerdict } : s));
+    setScans(prev => prev.map(s => s.id === scanId ? { ...s, trust_score: updatedScore, verdict: updatedVerdict as any } : s));
     if (currentReport.scan_id === scanId) {
-      setCurrentReport(prev => ({ ...prev, trust_score: updatedScore, confidence_score: updatedScore, verdict: updatedVerdict }));
+      setCurrentReport(prev => ({ ...prev, trust_score: updatedScore, confidence_score: updatedScore, verdict: updatedVerdict as any }));
     }
 
     // 2. Persist to Supabase
@@ -2160,6 +2270,7 @@ export function App() {
                   report={currentReport}
                   onNewScan={() => setUserView("user_scan")}
                   onOpenCopilot={() => setUserView("user_copilot")}
+                  onUpdateReport={(newReport) => setCurrentReport(newReport)}
                 />
               )}
               {userView === "user_copilot" && (

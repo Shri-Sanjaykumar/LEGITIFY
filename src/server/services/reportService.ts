@@ -40,6 +40,13 @@ export interface CompileReportParams {
   webIntelligence?: WebIntelligenceResult;
   contradictions?: any[];
   evidence: EvidenceItem[];
+  processingTimeMs?: number;
+  publicExperience?: any;
+  fraudPatterns?: any[];
+  legitimatePatterns?: any[];
+  counterEvidence?: any[];
+  fraudConfidence?: number;
+  explanationSummary?: any;
 }
 
 export function compileFullReport(params: CompileReportParams): LegitifyReport {
@@ -162,10 +169,10 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
         detected_company: documentData.detected_company_name,
         detected_stipend: documentData.detected_stipend,
         detected_dates: documentData.detected_dates,
-        suspicious_pressure_phrases: documentData.suspicious_pressure_phrases,
+        suspicious_pressure_phrases: (documentData as any).suspicious_pressure_phrases || [],
       },
-      suspicious_patterns_detected: documentData.suspicious_pressure_phrases,
-      requested_fees: documentData.detected_fees,
+      suspicious_patterns_detected: (documentData as any).suspicious_pressure_phrases || [],
+      requested_fees: (documentData as any).detected_fees || [],
     } : undefined,
     threat_intelligence: {
       matched_iocs_count: threatData?.count || 0,
@@ -218,12 +225,22 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
     company_name: entityName,
     confidence_score: scoreResult.trust_score,
     input_type: (documentData?.filename?.toLowerCase().endsWith('.pdf') ? 'pdf' : (entityType || 'text')).toUpperCase(),
-    processing_time_ms: Math.floor(2200 + Math.random() * 2500),
-    dimension_scores: documentData?.dimension_scores || {
-      rules: Math.round(scoreResult.components.document?.score || 72),
-      nlp: Math.round(scoreResult.components.ml_probability?.score || 26),
-      ner: Math.round(scoreResult.components.recruiter?.score || 22),
+    dimension_scores: {
+      rules: Math.round((scoreResult.components as any).document?.score || 72),
+      nlp: Math.round((scoreResult.components as any).ml_probability?.score || 26),
+      ner: Math.round((scoreResult.components as any).recruiter?.score || 22),
+      document_authenticity: Math.round((scoreResult.components as any).document_authenticity?.score ?? 50),
+      company_legal: Math.round((scoreResult.components as any).company?.score ?? 50),
+      domain_security: Math.round((scoreResult.components as any).domain?.score ?? 50),
+      recruiter_auth: Math.round((scoreResult.components as any).recruiter?.score ?? 50),
+      financial_safety: Math.round((scoreResult.components as any).document?.score ?? 50),
+      certificate_auth: Math.round((scoreResult.components as any).certificate?.score ?? 50),
+      ml_fraud_model: Math.round((scoreResult.components as any).ml_probability?.score ?? 50),
+      threat_intel: Math.round((scoreResult.components as any).threat?.score ?? 50),
+      community_evidence: Math.round((scoreResult.components as any).community?.score ?? 50),
+      consistency_cross_check: Math.round((scoreResult.components as any).consistency?.score ?? 50),
     },
+    components: scoreResult.components as any,
     triggered_flags: documentData?.triggered_flags || scoreResult.rules_triggered.map(r => ({
       rule: r.rule_id || r.name,
       severity: (r.severity?.toLowerCase() || 'medium') as any,
@@ -243,7 +260,13 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
       "Confirm the offer letter reference ID through the official employee recruitment portal.",
       "Prepare standard onboarding documents (educational transcripts and ID proofs).",
     ]),
-  };
+    public_experience: params.publicExperience,
+    fraud_patterns: params.fraudPatterns,
+    legitimate_patterns: params.legitimatePatterns,
+    counter_evidence: params.counterEvidence,
+    fraud_confidence: params.fraudConfidence,
+    explanation_summary: params.explanationSummary,
+  } as any;
 
   return report;
 }
@@ -335,7 +358,7 @@ export async function persistReport(
             await supabaseAdmin.from('company_intelligence').insert({
               company_id: comp.id,
               category: 'REGISTRY_RECORD',
-              source: companyData.source || 'Automated Registry Verification',
+              source: (companyData as any).source || 'Automated Registry Verification',
               title: `Verification record for ${companyData.legal_name || companyData.normalized_name}`,
               content_summary: `Trust Score: ${report.trust_score}/100. Verification Status: ${companyData.registry_status}`,
               confidence: report.confidence,
