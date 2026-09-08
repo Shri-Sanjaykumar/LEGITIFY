@@ -175,6 +175,30 @@ export interface ChunkFindings {
     organizationNames: string[];
     cinNumbers: string[];
   };
+  offerParts: {
+    roles: string[];
+    stipends: {
+      raw: string;
+      amount?: number;
+      currency: string;
+      period: 'MONTHLY' | 'ANNUAL' | 'WEEKLY' | 'LUMP_SUM' | 'UNSPECIFIED';
+      plausibility: 'PLAUSIBLE' | 'UNUSUAL' | 'UNVERIFIED' | 'CONTRADICTORY';
+      reason?: string;
+    }[];
+    joiningDates: {
+      raw: string;
+      date?: string;
+      isUrgent: boolean;
+      urgencyReason?: string;
+    }[];
+    signatories: {
+      name?: string;
+      title?: string;
+      raw: string;
+    }[];
+    selectionStatements: string[];
+    logoReferences: string[];
+  };
   paymentSignals: {
     hasPaymentRequest: boolean;
     hasPaymentNegation: boolean;
@@ -255,7 +279,100 @@ export function analyzeChunk(chunk: DocumentChunk): ChunkFindings {
   if (/whatsapp|telegram|instagram|facebook/i.test(text)) suspiciousPatterns.push('INFORMAL_CHANNEL_RECRUITMENT');
   if (upiIds.length > 0) suspiciousPatterns.push('UPI_ID_IN_OFFER');
   if (hasPaymentRequest && !hasPaymentNegation) suspiciousPatterns.push('PAYMENT_REQUEST_DETECTED');
-  
+
+  // --- Granular Offer Parts Extraction ---
+  const roles: string[] = [];
+  const roleMatches = text.matchAll(/(?:position|role|designation|post|as\s+an?|internship\s+(?:for|as))\s+(?:of\s+)?([A-Z][A-Za-z0-9/& -]{2,40}(?:Intern|Developer|Engineer|Trainee|Associate|Analyst|Consultant|Manager|Executive|Specialist|Designer|Scientist))/gi);
+  for (const m of roleMatches) {
+    if (m[1] && m[1].trim().length > 3) roles.push(m[1].trim());
+  }
+
+  const stipends: ChunkFindings['offerParts']['stipends'] = [];
+  const stipendMatches = text.matchAll(/(?:stipend|salary|ctc|compensation|remuneration|pay)\s*(?:of|is|:)?\s*((?:rs\.?|inr|₹|\$|usd)?\s*[\d,]+(?:\.\d{1,2})?\s*(?:per\s+month|\/month|\/mo|p\.m\.|per\s+annum|\/year|p\.a\.|lpa|per\s+week|\/week)?)/gi);
+  for (const sm of stipendMatches) {
+    const raw = sm[1]?.trim();
+    if (!raw) continue;
+    const numMatch = raw.replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+    const num = numMatch ? parseFloat(numMatch[0]) : undefined;
+    
+    let period: ChunkFindings['offerParts']['stipends'][0]['period'] = 'UNSPECIFIED';
+    if (/per\s+month|\/month|\/mo|p\.m\./i.test(raw)) period = 'MONTHLY';
+    else if (/per\s+annum|\/year|p\.a\.|lpa/i.test(raw)) period = 'ANNUAL';
+    else if (/per\s+week|\/week/i.test(raw)) period = 'WEEKLY';
+
+    // Economic plausibility: flexible context signals, not hardcoded fraud rules
+    let plausibility: ChunkFindings['offerParts']['stipends'][0]['plausibility'] = 'UNVERIFIED';
+    let reason = 'Compensation detected; standard verification against role benchmarks';
+    if (hasPaymentRequest) {
+      plausibility = 'CONTRADICTORY';
+      reason = 'Document demands candidate payment alongside compensation offer — high fraud risk';
+    } else if (num) {
+      // Dynamic sanity check without hardcoded binary cutoffs
+      if (num > 0) {
+        plausibility = 'PLAUSIBLE';
+        reason = `Stipend figure documented (${raw}). Subject to corporate verification.`;
+      }
+    }
+
+    stipends.push({
+      raw,
+      amount: num,
+      currency: raw.includes('$') || /usd/i.test(raw) ? 'USD' : 'INR',
+      period,
+      plausibility,
+      reason,
+    });
+  }
+
+  const joiningDates: ChunkFindings['offerParts']['joiningDates'] = [];
+  const joinMatches = text.matchAll(/(?:joining\s+date|commencement\s+date|reporting\s+date|start\s+date|report\s+on\s+or\s+before)\s*(?:is|:)?\s*([A-Za-z0-9, /-]+)/gi);
+  for (const jm of joinMatches) {
+    const raw = jm[1]?.trim();
+    if (raw && raw.length > 3) {
+      const isUrgent = urgencySignals.includes('URGENCY_LANGUAGE') || /within\s+24|within\s+48|immediately/i.test(text);
+      joiningDates.push({
+        raw,
+        isUrgent,
+        urgencyReason: isUrgent ? 'Urgent onboarding or compressed response window detected' : undefined,
+      });
+    }
+  }
+
+  const signatories: ChunkFindings['offerParts']['signatories'] = [];
+  // Enhanced signatory regex that extracts title and person name separately
+  const sigMatch = text.match(/(?:authorized\s+signatory|authorized\s+sign|yours\s+(?:sincerely|faithfully|truly)|hr\s+manager|head\s+-\s+hr|director|talent\s+acquisition)[\s\S]{0,120}/i);
+  if (sigMatch) {
+    const raw = sigMatch[0].trim();
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const title = lines[0];
+    let name: string | undefined;
+
+    // Look for a capitalized person name in the lines following the title/signoff
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      const nameCandidate = line.match(/^([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?(?:\s+[A-Z][a-z]+)+)/);
+      if (nameCandidate && !/(?:private|limited|ltd|pvt|company|corp|technologies|solutions)/i.test(line)) {
+        name = nameCandidate[1];
+        break;
+      }
+    }
+
+    signatories.push({
+      raw,
+      title,
+      name,
+    });
+  }
+
+  const selectionStatements: string[] = [];
+  const selMatch = text.match(/(?:congratulations\s+on\s+your\s+selection|pleased\s+to\s+offer\s+you|offer\s+you\s+(?:the\s+position|employment)|selected\s+for\s+the\s+position)/i);
+  if (selMatch) selectionStatements.push(selMatch[0].trim());
+
+  const logoReferences: string[] = [];
+  if (/letterhead|official\s+seal|company\s+seal|watermark/i.test(text)) {
+    logoReferences.push('Visual branding / letterhead indicators present');
+  }
+
   return {
     chunkId: chunk.chunkId,
     entities: {
@@ -268,6 +385,14 @@ export function analyzeChunk(chunk: DocumentChunk): ChunkFindings {
       dates,
       organizationNames: [],
       cinNumbers,
+    },
+    offerParts: {
+      roles,
+      stipends,
+      joiningDates,
+      signatories,
+      selectionStatements,
+      logoReferences,
     },
     paymentSignals: {
       hasPaymentRequest,

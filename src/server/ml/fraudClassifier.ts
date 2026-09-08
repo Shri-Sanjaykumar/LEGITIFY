@@ -1,18 +1,20 @@
-// ==============================================================================
-// LEGITIFY SUPERVISED ML INFERENCE ENGINE
-// Zero-dependency offline inference using trained Kaggle Fake-Job model artifact
-// ==============================================================================
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
 export interface MLPrediction {
   modelVersion: string;
   algorithm: string;
-  prediction: "FRAUDULENT" | "LEGITIMATE";
+  prediction: "FRAUDULENT" | "LEGITIMATE" | "ML_UNAVAILABLE";
   fraudProbability: number;
   legitimateProbability: number;
   confidence: number;
+  ml_probability: number;
+  ml_probability_percent: number;
+  model_version: string;
+  model_loaded: boolean;
+  feature_count: number;
   topFeatures: { feature: string; contribution: number; direction: "FRAUD" | "LEGITIMATE" }[];
   textSignals: {
     wordCount: number;
@@ -21,6 +23,7 @@ export interface MLPrediction {
     hasCompanyProfile: boolean;
     hasSalaryRange: boolean;
   };
+  error?: string;
 }
 
 export interface MLModelMetrics {
@@ -30,6 +33,8 @@ export interface MLModelMetrics {
   trainedAt: string;
   totalTrainingRows: number;
   bestModel: string;
+  modelLoaded: boolean;
+  featureCount: number;
   evaluationMetrics: Record<string, {
     accuracy: number;
     precision: number;
@@ -45,48 +50,59 @@ export interface MLModelMetrics {
 
 let loadedArtifact: any = null;
 
-function getArtifact() {
+function getArtifact(): any | null {
   if (loadedArtifact) return loadedArtifact;
 
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const artifactPath = path.join(__dirname, 'modelArtifact.json');
+  // Try 1: CommonJS createRequire (Vercel serverless / Node / tsx safe)
+  try {
+    const require = createRequire(import.meta.url);
+    loadedArtifact = require('./modelArtifact.json');
+    if (loadedArtifact?.featureWeights) return loadedArtifact;
+  } catch {}
 
-  if (fs.existsSync(artifactPath)) {
-    const raw = fs.readFileSync(artifactPath, 'utf-8');
-    loadedArtifact = JSON.parse(raw);
-  } else {
-    // Fallback default weights if artifact not yet built
-    loadedArtifact = {
-      modelVersion: "1.2.0-kaggle-supervised",
-      algorithm: "Linear SVM (Calibrated) / Logistic Regression",
-      dataset: "Kaggle Real / Fake Job Postings Dataset",
-      trainedAt: "2026-08-18",
-      totalTrainingRows: 17880,
-      intercept: -2.85,
-      featureWeights: {
-        "wire transfer": 2.4,
-        "entry fee": 2.8,
-        "administrative assistant work": 2.1,
-        "data entry clerk": 1.9,
-        "pay to work": 2.9,
-        "deposit": 1.8,
-        "processing fee": 2.6,
-        "has_company_logo": -1.8,
-        "has_company_profile": -2.2,
-      },
-      evaluationMetrics: {},
-      topFraudFeatures: [],
-      topLegitFeatures: [],
-      vocabulary: {},
-      idf: [],
-    };
-  }
-  return loadedArtifact;
+  // Try 2: Filesystem relative to import.meta.url
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const artifactPath = path.join(__dirname, 'modelArtifact.json');
+    if (fs.existsSync(artifactPath)) {
+      loadedArtifact = JSON.parse(fs.readFileSync(artifactPath, 'utf-8'));
+      if (loadedArtifact?.featureWeights) return loadedArtifact;
+    }
+  } catch {}
+
+  // Try 3: Process CWD resolution
+  try {
+    const cwdPath = path.resolve(process.cwd(), 'src/server/ml/modelArtifact.json');
+    if (fs.existsSync(cwdPath)) {
+      loadedArtifact = JSON.parse(fs.readFileSync(cwdPath, 'utf-8'));
+      if (loadedArtifact?.featureWeights) return loadedArtifact;
+    }
+  } catch {}
+
+  // Zero hardcoded fake weights: return null if artifact is unparseable
+  loadedArtifact = null;
+  return null;
 }
 
 export function getMLModelMetrics(): MLModelMetrics {
   const art = getArtifact();
+  if (!art) {
+    return {
+      modelVersion: "1.2.0-kaggle-supervised",
+      algorithm: "Linear SVM (Calibrated)",
+      dataset: "Kaggle Real / Fake Job Postings Dataset",
+      trainedAt: "2026-08-18",
+      totalTrainingRows: 17880,
+      bestModel: "Linear SVM (Calibrated)",
+      modelLoaded: false,
+      featureCount: 0,
+      evaluationMetrics: {},
+      topFraudFeatures: [],
+      topLegitFeatures: [],
+    };
+  }
+
   return {
     modelVersion: art.modelVersion,
     algorithm: art.bestModel || art.algorithm || "Linear SVM (Calibrated)",
@@ -94,6 +110,8 @@ export function getMLModelMetrics(): MLModelMetrics {
     trainedAt: art.trainedAt || "2026-08-18",
     totalTrainingRows: art.totalTrainingRows || 17880,
     bestModel: art.bestModel || "Linear SVM (Calibrated)",
+    modelLoaded: true,
+    featureCount: Object.keys(art.featureWeights || {}).length,
     evaluationMetrics: art.evaluationMetrics || {},
     topFraudFeatures: art.topFraudFeatures || [],
     topLegitFeatures: art.topLegitFeatures || [],
@@ -115,6 +133,31 @@ export function predictJobOfferRisk(params: {
   const rawText = (params.text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
   const words = rawText.split(/\s+/).filter(w => w.length > 0);
   const wordCount = words.length;
+
+  if (!art) {
+    return {
+      modelVersion: "1.2.0-kaggle-supervised",
+      algorithm: "Linear SVM (Calibrated)",
+      prediction: "ML_UNAVAILABLE",
+      fraudProbability: 0,
+      legitimateProbability: 0,
+      confidence: 0,
+      ml_probability: 0,
+      ml_probability_percent: 0,
+      model_version: "1.2.0-kaggle-supervised",
+      model_loaded: false,
+      feature_count: 0,
+      topFeatures: [],
+      textSignals: {
+        wordCount,
+        hasTelecommuting: !!params.telecommuting,
+        hasCompanyLogo: !!params.hasCompanyLogo,
+        hasCompanyProfile: !!params.hasCompanyProfile,
+        hasSalaryRange: !!params.hasSalaryRange,
+      },
+      error: "ML model artifact not loaded"
+    };
+  }
 
   const weights: Record<string, number> = art.featureWeights || {};
   let score = art.intercept || -2.5;
@@ -192,6 +235,11 @@ export function predictJobOfferRisk(params: {
     fraudProbability: Math.round(fraudProbability * 100) / 100,
     legitimateProbability: Math.round(legitimateProbability * 100) / 100,
     confidence: Math.round(Math.max(fraudProbability, legitimateProbability) * 100) / 100,
+    ml_probability: Math.round(fraudProbability * 1000) / 1000,
+    ml_probability_percent: Math.round(fraudProbability * 100),
+    model_version: art.modelVersion,
+    model_loaded: true,
+    feature_count: Object.keys(weights).length,
     topFeatures: contributions.slice(0, 10),
     textSignals: {
       wordCount,

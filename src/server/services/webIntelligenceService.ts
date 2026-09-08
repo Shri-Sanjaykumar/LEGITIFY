@@ -168,16 +168,17 @@ export async function runWebIntelligence(params: {
   if (params.documentText) {
     const textLower = params.documentText.toLowerCase();
     
-    // Cluster A: Upfront Fee Demands
-    if (textLower.includes('registration fee') || textLower.includes('security deposit') || textLower.includes('training fee') || textLower.includes('processing fee') || textLower.includes('laptop deposit')) {
+    // Cluster A: Upfront Fee Demands (Dynamic extraction from document text)
+    const feeMatch = textLower.match(/(?:registration\s+fee|security\s+deposit|training\s+fee|processing\s+fee|laptop\s+deposit)[^.\n]{0,80}/i);
+    if (feeMatch) {
+      const extractedClause = feeMatch[0].trim();
       complaintClusters.push({
         pattern: 'MANDATORY_UPFRONT_FEE_DEMAND',
-        count: 3,
+        count: 1,
         confidence: 94.0,
         samples: [
-          'Multiple candidates reported demands for ₹4,999 security deposit prior to internship joining.',
-          'Recruiter requested upfront training fees refundable after 90 days.',
-          'Offer stipulated registration payment via direct UPI before formal onboarding.',
+          `Identified fee clause in document: "${extractedClause}"`,
+          'Advisories warn that legitimate employers never require candidate payment for training or security deposits.',
         ],
       });
 
@@ -186,8 +187,8 @@ export async function runWebIntelligence(params: {
         evidence_type: 'COMMUNITY_CORROBORATED_FEE_DEMAND',
         source_name: 'Web & Community Intelligence',
         title: 'Corroborated Pattern: Upfront Recruitment Fee Demand',
-        snippet: 'Upfront fee condition matches high-risk deceptive recruitment patterns identified in public candidate reports.',
-        evidence_text: 'Document requests payment of registration or training fees, matching 3 independent complaint clusters across candidate forums.',
+        snippet: `Upfront fee clause identified in document: "${extractedClause}".`,
+        evidence_text: `Document contains candidate payment requirement ("${extractedClause}"). Commercial recruitment standards and cybercrime advisories prohibit candidate-side charges.`,
         evidence_strength: 'VERY_STRONG',
         status: 'NEGATIVE',
         severity: 'CRITICAL',
@@ -197,14 +198,16 @@ export async function runWebIntelligence(params: {
     }
 
     // Cluster B: Off-Platform Communication (Telegram / WhatsApp)
-    if (textLower.includes('telegram') || textLower.includes('whatsapp') || textLower.includes('wa.me') || textLower.includes('t.me')) {
+    const commMatch = textLower.match(/(?:telegram|whatsapp|wa\.me|t\.me)[^.\n]{0,60}/i);
+    if (commMatch) {
+      const extractedChannel = commMatch[0].trim();
       complaintClusters.push({
         pattern: 'OFF_PLATFORM_COMMUNICATION_MIGRATION',
-        count: 2,
+        count: 1,
         confidence: 88.0,
         samples: [
-          'Recruiter insisted on conducting all interview stages strictly on Telegram.',
-          'Official email was bypassed in favor of encrypted messaging handle.',
+          `Off-platform communication channel referenced: "${extractedChannel}"`,
+          'Corporate security advisories flag recruitment migration to encrypted consumer chat apps.',
         ],
       });
 
@@ -213,8 +216,8 @@ export async function runWebIntelligence(params: {
         evidence_type: 'COMMUNICATION_MIGRATION_RISK',
         source_name: 'Web Intelligence Engine',
         title: 'Off-Platform Channel Migration Risk',
-        snippet: 'Migration of corporate recruitment dialogue to Telegram/WhatsApp is flagged in security advisories.',
-        evidence_text: 'Recruiter directs candidate to unverified messaging channels, bypassing official corporate HR tracking.',
+        snippet: `Migration to unverified messaging channels identified: "${extractedChannel}".`,
+        evidence_text: `Recruiter directs communication to personal chat handle ("${extractedChannel}"), bypassing official corporate HR logging.`,
         evidence_strength: 'STRONG',
         status: 'WARNING',
         severity: 'HIGH',

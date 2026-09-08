@@ -21,6 +21,11 @@ export interface EvidenceLedgerState {
 export class EvidenceLedger {
   private items: ForensicEvidence[] = [];
   private counter: number = 0;
+  private scanId: string;
+
+  constructor(scanId: string) {
+    this.scanId = scanId;
+  }
 
   /**
    * Add an evidence item with full audit provenance.
@@ -42,7 +47,7 @@ export class EvidenceLedger {
     customId?: string;
   }): ForensicEvidence {
     this.counter++;
-    const id = params.customId || `E-${String(this.counter).padStart(3, '0')}`;
+    const id = params.customId || `${this.scanId}-E-${String(this.counter).padStart(3, '0')}`;
 
     // Authority is derived from source tier:
     // Tier 1 (Statutory/Official): 1.0

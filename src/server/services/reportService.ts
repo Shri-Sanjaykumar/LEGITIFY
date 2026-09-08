@@ -12,6 +12,10 @@ import {
   EvidenceCompleteness,
   MLPredictionResult,
   EntityGraphData,
+  ExtractedOfferParts,
+  GeminiCrossExaminationReport,
+  GeminiReconciliationReport,
+  DualRAGCitations,
 } from '../../types';
 import { CompanyData } from './companyService';
 import { DomainData } from './domainService';
@@ -47,6 +51,12 @@ export interface CompileReportParams {
   counterEvidence?: any[];
   fraudConfidence?: number;
   explanationSummary?: any;
+  extractedOfferParts?: ExtractedOfferParts;
+  geminiCrossExamination?: GeminiCrossExaminationReport;
+  geminiReconciliation?: GeminiReconciliationReport;
+  dualRAGCitations?: DualRAGCitations;
+  signatoryForensics?: LegitifyReport['signatory_forensics'];
+  pipelineTrace?: LegitifyReport['pipeline_trace'];
 }
 
 export function compileFullReport(params: CompileReportParams): LegitifyReport {
@@ -226,19 +236,19 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
     confidence_score: scoreResult.trust_score,
     input_type: (documentData?.filename?.toLowerCase().endsWith('.pdf') ? 'pdf' : (entityType || 'text')).toUpperCase(),
     dimension_scores: {
-      rules: Math.round((scoreResult.components as any).document?.score || 72),
-      nlp: Math.round((scoreResult.components as any).ml_probability?.score || 26),
-      ner: Math.round((scoreResult.components as any).recruiter?.score || 22),
-      document_authenticity: Math.round((scoreResult.components as any).document_authenticity?.score ?? 50),
-      company_legal: Math.round((scoreResult.components as any).company?.score ?? 50),
-      domain_security: Math.round((scoreResult.components as any).domain?.score ?? 50),
-      recruiter_auth: Math.round((scoreResult.components as any).recruiter?.score ?? 50),
-      financial_safety: Math.round((scoreResult.components as any).document?.score ?? 50),
-      certificate_auth: Math.round((scoreResult.components as any).certificate?.score ?? 50),
-      ml_fraud_model: Math.round((scoreResult.components as any).ml_probability?.score ?? 50),
-      threat_intel: Math.round((scoreResult.components as any).threat?.score ?? 50),
-      community_evidence: Math.round((scoreResult.components as any).community?.score ?? 50),
-      consistency_cross_check: Math.round((scoreResult.components as any).consistency?.score ?? 50),
+      rules: Math.round((scoreResult.components as any).document?.score ?? 0),
+      nlp: Math.round((scoreResult.components as any).ml_probability?.score ?? 0),
+      ner: Math.round((scoreResult.components as any).recruiter?.score ?? 0),
+      document_authenticity: Math.round((scoreResult.components as any).document_authenticity?.score ?? 0),
+      company_legal: Math.round((scoreResult.components as any).company?.score ?? 0),
+      domain_security: Math.round((scoreResult.components as any).domain?.score ?? 0),
+      recruiter_auth: Math.round((scoreResult.components as any).recruiter?.score ?? 0),
+      financial_safety: Math.round((scoreResult.components as any).document?.score ?? 0),
+      certificate_auth: Math.round((scoreResult.components as any).certificate?.score ?? 0),
+      ml_fraud_model: Math.round((scoreResult.components as any).ml_probability?.score ?? 0),
+      threat_intel: Math.round((scoreResult.components as any).threat?.score ?? 0),
+      community_evidence: Math.round((scoreResult.components as any).community?.score ?? 0),
+      consistency_cross_check: Math.round((scoreResult.components as any).consistency?.score ?? 0),
     },
     components: scoreResult.components as any,
     triggered_flags: documentData?.triggered_flags || scoreResult.rules_triggered.map(r => ({
@@ -266,6 +276,13 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
     counter_evidence: params.counterEvidence,
     fraud_confidence: params.fraudConfidence,
     explanation_summary: params.explanationSummary,
+    score_trace: scoreResult.score_trace,
+    extracted_offer_parts: params.extractedOfferParts,
+    gemini_cross_examination: params.geminiCrossExamination,
+    gemini_reconciliation: params.geminiReconciliation,
+    dual_rag_citations: params.dualRAGCitations,
+    signatory_forensics: params.signatoryForensics,
+    pipeline_trace: params.pipelineTrace,
   } as any;
 
   return report;

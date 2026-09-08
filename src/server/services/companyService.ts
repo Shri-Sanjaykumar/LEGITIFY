@@ -28,99 +28,7 @@ const CIN_REGEX = /^[UL][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/i;
 // GST pattern: [0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}
 const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
 
-const VERIFIED_GLOBAL_ENTERPRISES: Record<string, Partial<CompanyData>> = {
-  "tcs": {
-    legal_name: "Tata Consultancy Services Limited",
-    registration_number: "L22210MH1995PLC084781",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "India",
-    domain: "tcs.com",
-    website: "https://www.tcs.com",
-  },
-  "indigo": {
-    legal_name: "InterGlobe Aviation Limited",
-    registration_number: "L62100DL2004PLC129768",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "India",
-    domain: "goindigo.in",
-    website: "https://www.goindigo.in",
-  },
-  "interglobe aviation": {
-    legal_name: "InterGlobe Aviation Limited",
-    registration_number: "L62100DL2004PLC129768",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "India",
-    domain: "goindigo.in",
-    website: "https://www.goindigo.in",
-  },
-  "tata motors": {
-    legal_name: "Tata Motors Limited",
-    registration_number: "L28920MH1945PLC004520",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "India",
-    domain: "tatamotors.com",
-    website: "https://www.tatamotors.com",
-  },
-  "tata consultancy": {
-    legal_name: "Tata Consultancy Services Limited",
-    registration_number: "L22210MH1995PLC084781",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "India",
-    domain: "tcs.com",
-    website: "https://www.tcs.com",
-  },
-  "infosys": {
-    legal_name: "Infosys Limited",
-    registration_number: "L85110KA1981PLC013115",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "India",
-    domain: "infosys.com",
-    website: "https://www.infosys.com",
-  },
-  "microsoft": {
-    legal_name: "Microsoft Corporation",
-    registration_number: "US-WA-600413485",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "United States",
-    domain: "microsoft.com",
-    website: "https://www.microsoft.com",
-  },
-  "google": {
-    legal_name: "Google LLC",
-    registration_number: "US-DE-3582691",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "United States",
-    domain: "google.com",
-    website: "https://www.google.com",
-  },
-  "amazon": {
-    legal_name: "Amazon.com, Inc.",
-    registration_number: "US-DE-2384752",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "United States",
-    domain: "amazon.com",
-    website: "https://www.amazon.com",
-  },
-  "techcorp": {
-    legal_name: "TechCorp Solutions Ltd",
-    registration_number: "U72200DL2018PTC123456",
-    status: "ACTIVE",
-    registry_status: "VERIFIED",
-    country: "India",
-    domain: "techcorp.com",
-    website: "https://www.techcorp.com",
-  },
-};
-
+// Dynamic Corporate Entity Intelligence (Zero hardcoded static company authorities)
 export async function lookupCompany(
   companyInput: string,
   claimedDomain?: string,
@@ -140,34 +48,6 @@ export async function lookupCompany(
 
   if (!normalized) {
     return { data: company, evidence, score_modifier };
-  }
-
-  // 1. Check Verified Enterprise Directory
-  for (const [key, ent] of Object.entries(VERIFIED_GLOBAL_ENTERPRISES)) {
-    if (normalized.includes(key) || key.includes(normalized)) {
-      company = {
-        ...company,
-        ...ent,
-        normalized_name: key,
-      } as CompanyData;
-
-      evidence.push({
-        category: "COMPANY",
-        evidence_type: "REGISTRY_VERIFIED_ENTERPRISE",
-        source_name: "Enterprise Registry Directory",
-        title: `Verified Enterprise Record: ${company.legal_name}`,
-        snippet: `Registration: ${company.registration_number} · Domain: ${company.domain}`,
-        evidence_text: `Entity matched active verified statutory registry records for ${company.legal_name}.`,
-        evidence_strength: "STRONG",
-        status: "VERIFIED",
-        severity: "INFO",
-        verified: true,
-        confidence: 95.0,
-      });
-
-      score_modifier += 30;
-      return { data: company, evidence, score_modifier };
-    }
   }
 
   // 2. Check Shared Intelligence Database Cache

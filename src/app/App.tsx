@@ -39,6 +39,7 @@ type UserView =
 type AdminView =
   | "admin_mission"
   | "admin_scan"
+  | "admin_copilot"
   | "admin_threats"
   | "admin_analytics"
   | "admin_cases"
@@ -110,19 +111,76 @@ function AnimatedCounter({ value }: { value: number }) {
 function FormattedCopilotMessage({ text }: { text: string }) {
   const lines = text.split("\n");
 
+  const renderFormattedChunk = (content: string) => {
+    return content.split(/(\*\*.*?\*\*|\[Doc-P\d+-C\d+\]|\[Ext-[A-Za-z0-9_-]+\]|\[E-\d+\]|`.*?`)/g).map((chunk, cIdx) => {
+      if (chunk.startsWith("**") && chunk.endsWith("**")) {
+        return <strong key={cIdx} className="text-slate-100 font-extrabold">{chunk.slice(2, -2)}</strong>;
+      }
+      if (/^\[Doc-P\d+-C\d+\]$/.test(chunk)) {
+        return (
+          <span key={cIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-500/20 text-[#00F0FF] font-mono text-xs font-bold border border-cyan-500/40 mx-1 shadow-sm" title="Verified Document RAG Citation">
+            <span>📄</span> {chunk.slice(1, -1)}
+          </span>
+        );
+      }
+      if (/^\[Ext-[A-Za-z0-9_-]+\]$/.test(chunk)) {
+        return (
+          <span key={cIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 font-mono text-xs font-bold border border-purple-500/40 mx-1 shadow-sm" title="Verified External Intelligence Citation">
+            <span>🌐</span> {chunk.slice(1, -1)}
+          </span>
+        );
+      }
+      if (/^\[E-\d+\]$/.test(chunk)) {
+        return (
+          <span key={cIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-xs font-bold border border-indigo-500/40 mx-1 shadow-sm" title="Evidence Locker Record">
+            <span>🛡️</span> {chunk.slice(1, -1)}
+          </span>
+        );
+      }
+      if (chunk.startsWith("`") && chunk.endsWith("`")) {
+        return <code key={cIdx} className="px-2 py-0.5 rounded-lg bg-slate-800 text-[#00FF87] font-mono text-xs md:text-sm font-bold border border-[#00FF87]/30">{chunk.slice(1, -1)}</code>;
+      }
+      return chunk;
+    });
+  };
+
   return (
-    <div className="space-y-4 text-base md:text-lg leading-relaxed text-slate-200">
+    <div className="space-y-3.5 text-sm md:text-base leading-relaxed text-slate-200">
       {lines.map((line, idx) => {
         const trimmed = line.trim();
-        if (!trimmed) return <div key={idx} className="h-2" />;
+        if (!trimmed) return <div key={idx} className="h-1.5" />;
+
+        if (trimmed === "---") {
+          return <hr key={idx} className="border-[#1E2838] my-3" />;
+        }
 
         if (trimmed.startsWith("###")) {
           const content = trimmed.replace(/^###\s*/, "");
           return (
-            <div key={idx} className="pt-4 pb-2 border-b border-[#1E2838] flex items-center gap-3">
-              <span className="text-xl md:text-2xl font-black text-[#00FF87] text-glow-emerald tracking-wide">
+            <div key={idx} className="pt-3 pb-1 border-b border-[#1E2838] flex items-center gap-2.5">
+              <span className="text-lg md:text-xl font-black text-[#00FF87] text-glow-emerald tracking-wide">
                 {content}
               </span>
+            </div>
+          );
+        }
+
+        if (trimmed.startsWith("##")) {
+          const content = trimmed.replace(/^##\s*/, "");
+          return (
+            <div key={idx} className="pt-4 pb-1.5 border-b border-[#1E2838] flex items-center gap-2.5">
+              <span className="text-xl md:text-2xl font-black text-slate-100 tracking-wide">
+                {content}
+              </span>
+            </div>
+          );
+        }
+
+        if (trimmed.startsWith(">")) {
+          const content = trimmed.replace(/^>\s*/, "");
+          return (
+            <div key={idx} className="pl-4 py-2 my-2 border-l-4 border-[#00FF87] bg-[#0A0D14] rounded-r-xl text-slate-300 italic">
+              {renderFormattedChunk(content)}
             </div>
           );
         }
@@ -132,35 +190,18 @@ function FormattedCopilotMessage({ text }: { text: string }) {
           const title = parts[0].replace(/\*\*/g, "");
           const rest = parts.slice(1).join(":**");
           return (
-            <div key={idx} className="pt-2 font-bold text-slate-100 text-base md:text-lg">
-              <span className="text-[#00F0FF] text-glow-cyan font-extrabold">{title}:</span> {rest}
+            <div key={idx} className="pt-1.5 font-bold text-slate-100">
+              <span className="text-[#00F0FF] text-glow-cyan font-extrabold">{title}:</span> {renderFormattedChunk(rest)}
             </div>
           );
         }
 
         if (trimmed.startsWith("*") || trimmed.startsWith("-")) {
           const content = trimmed.replace(/^[*-]\s*/, "");
-          const formatted = content.split(/(\*\*.*?\*\*|\[E-\d+\]|`.*?`)/g).map((chunk, cIdx) => {
-            if (chunk.startsWith("**") && chunk.endsWith("**")) {
-              return <strong key={cIdx} className="text-slate-100 font-extrabold">{chunk.slice(2, -2)}</strong>;
-            }
-            if (/^\[E-\d+\]$/.test(chunk)) {
-              return (
-                <span key={cIdx} className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-sm font-bold border border-indigo-500/40 mx-1">
-                  {chunk.slice(1, -1)}
-                </span>
-              );
-            }
-            if (chunk.startsWith("`") && chunk.endsWith("`")) {
-              return <code key={cIdx} className="px-2 py-0.5 rounded-lg bg-slate-800 text-[#00FF87] font-mono text-sm font-bold border border-[#00FF87]/30">{chunk.slice(1, -1)}</code>;
-            }
-            return chunk;
-          });
-
           return (
-            <div key={idx} className="flex items-start gap-3 pl-3 text-slate-200 text-base md:text-lg">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#00FF87] mt-2.5 flex-shrink-0 shadow-[0_0_10px_#00FF87]" />
-              <div className="flex-1 leading-relaxed">{formatted}</div>
+            <div key={idx} className="flex items-start gap-2.5 pl-2 text-slate-200">
+              <div className="w-2 h-2 rounded-full bg-[#00FF87] mt-2 flex-shrink-0 shadow-[0_0_8px_#00FF87]" />
+              <div className="flex-1 leading-relaxed">{renderFormattedChunk(content)}</div>
             </div>
           );
         }
@@ -170,52 +211,18 @@ function FormattedCopilotMessage({ text }: { text: string }) {
           if (match) {
             const num = match[1];
             const content = match[2];
-            const formatted = content.split(/(\*\*.*?\*\*|\[E-\d+\]|`.*?`)/g).map((chunk, cIdx) => {
-              if (chunk.startsWith("**") && chunk.endsWith("**")) {
-                return <strong key={cIdx} className="text-slate-100 font-extrabold">{chunk.slice(2, -2)}</strong>;
-              }
-              if (/^\[E-\d+\]$/.test(chunk)) {
-                return (
-                  <span key={cIdx} className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-sm font-bold border border-indigo-500/40 mx-1">
-                    {chunk.slice(1, -1)}
-                  </span>
-                );
-              }
-              if (chunk.startsWith("`") && chunk.endsWith("`")) {
-                return <code key={cIdx} className="px-2 py-0.5 rounded-lg bg-slate-800 text-[#00FF87] font-mono text-sm font-bold border border-[#00FF87]/30">{chunk.slice(1, -1)}</code>;
-              }
-              return chunk;
-            });
-
             return (
-              <div key={idx} className="flex items-start gap-3 pl-2 text-slate-200 text-base md:text-lg">
-                <span className="w-7 h-7 rounded-xl bg-[#1E2838] text-xs font-mono font-black text-[#00FF87] flex items-center justify-center flex-shrink-0 mt-0.5 border border-[#00FF87]/40 shadow-sm">
+              <div key={idx} className="flex items-start gap-2.5 pl-1 text-slate-200">
+                <span className="w-6 h-6 rounded-lg bg-[#1E2838] text-xs font-mono font-black text-[#00FF87] flex items-center justify-center flex-shrink-0 mt-0.5 border border-[#00FF87]/40 shadow-sm">
                   {num}
                 </span>
-                <div className="flex-1 leading-relaxed">{formatted}</div>
+                <div className="flex-1 leading-relaxed">{renderFormattedChunk(content)}</div>
               </div>
             );
           }
         }
 
-        const formatted = trimmed.split(/(\*\*.*?\*\*|\[E-\d+\]|`.*?`)/g).map((chunk, cIdx) => {
-          if (chunk.startsWith("**") && chunk.endsWith("**")) {
-            return <strong key={cIdx} className="text-slate-100 font-extrabold">{chunk.slice(2, -2)}</strong>;
-          }
-          if (/^\[E-\d+\]$/.test(chunk)) {
-            return (
-              <span key={cIdx} className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-sm font-bold border border-indigo-500/40 mx-1">
-                {chunk.slice(1, -1)}
-              </span>
-            );
-          }
-          if (chunk.startsWith("`") && chunk.endsWith("`")) {
-            return <code key={cIdx} className="px-2 py-0.5 rounded-lg bg-slate-800 text-[#00FF87] font-mono text-sm font-bold border border-[#00FF87]/30">{chunk.slice(1, -1)}</code>;
-          }
-          return chunk;
-        });
-
-        return <p key={idx} className="text-slate-200 text-base md:text-lg leading-relaxed">{formatted}</p>;
+        return <p key={idx} className="text-slate-200 leading-relaxed">{renderFormattedChunk(trimmed)}</p>;
       })}
     </div>
   );
@@ -505,17 +512,19 @@ function Header({
   portalRole,
   user,
   onSignOut,
+  onSwitchRole,
 }: {
   portalRole: PortalRole;
   user: any;
   onSignOut: () => void;
+  onSwitchRole?: (role: PortalRole) => void;
 }) {
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || (portalRole === "admin" ? "Security Admin" : "Sanjay Kumar. V");
 
   return (
     <header className="h-20 px-6 md:px-10 border-b border-[#1E2838] bg-[#07090E]/95 backdrop-blur-2xl flex items-center justify-between z-30 sticky top-0 shadow-2xl">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-3.5 group cursor-pointer">
+        <div className="flex items-center gap-3.5 group cursor-pointer" onClick={() => onSwitchRole && onSwitchRole(portalRole === "admin" ? "user" : "admin")}>
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#00FF87] via-[#00E599] to-[#00F0FF] p-[2.5px] shadow-[0_0_25px_rgba(0,255,135,0.4)]">
             <div className="w-full h-full rounded-[14px] bg-[#060709] flex items-center justify-center text-2xl">
               🛡️
@@ -533,6 +542,20 @@ function Header({
       </div>
 
       <div className="flex items-center gap-4">
+        {onSwitchRole && (
+          <button
+            onClick={() => onSwitchRole(portalRole === "admin" ? "user" : "admin")}
+            className={`hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-mono font-black border transition-all cursor-pointer shadow-md ${
+              portalRole === "admin"
+                ? "bg-[#00FF87]/15 text-[#00FF87] border-[#00FF87]/40 hover:bg-[#00FF87]/25 hover:border-[#00FF87]"
+                : "bg-[#00F0FF]/15 text-[#00F0FF] border-[#00F0FF]/40 hover:bg-[#00F0FF]/25 hover:border-[#00F0FF]"
+            }`}
+            title={portalRole === "admin" ? "Switch to Student / Candidate Portal" : "Access Security Operations & Admin Mission"}
+          >
+            <span>{portalRole === "admin" ? "🎓 Switch to Candidate View" : "🛡️ Access Admin Ops"}</span>
+          </button>
+        )}
+
         {user && (
           <div className="flex items-center gap-3.5 bg-[#0F131A] border-2 border-[#1E2838] pl-3 pr-4 py-2 rounded-full shadow-md">
             <div className="w-9 h-9 rounded-full bg-[#00FF87]/20 border-2 border-[#00FF87] flex items-center justify-center text-sm font-black text-[#00FF87]">
@@ -549,9 +572,10 @@ function Header({
             <button
               onClick={onSignOut}
               title="Sign Out & Return to Login"
-              className="p-2 rounded-full text-slate-400 hover:text-[#FF3B5C] hover:bg-[#1A2232] transition-colors ml-1 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-slate-300 hover:text-[#FF3B5C] hover:bg-[#1A2232] transition-colors ml-1 cursor-pointer border border-[#1E2838]"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4 h-4" />
+              <span className="hidden lg:inline">Sign Out</span>
             </button>
           </div>
         )}
@@ -648,8 +672,21 @@ function UserScanView({
   };
 
   const handleStartScan = async () => {
-    if (!companyName.trim() && !contextText.trim() && !file) {
-      setError("Please upload an offer letter document or enter details to scan.");
+    if (!companyName.trim()) {
+      setError("Organisation Name is mandatory. Please specify the target company or institute.");
+      return;
+    }
+    const emailTrim = contactEmail.trim();
+    if (!emailTrim || !emailTrim.includes('@') || !emailTrim.includes('.')) {
+      setError("HR / Recruiter Email is mandatory. Please provide a valid email address (e.g. hr@company.com).");
+      return;
+    }
+    if (tabMode === "file" && !file) {
+      setError("Please upload an offer letter document (PDF or Image) to inspect.");
+      return;
+    }
+    if (tabMode === "details" && !contextText.trim()) {
+      setError("Please enter the job offer or letter text to inspect.");
       return;
     }
     setError(null);
@@ -658,8 +695,12 @@ function UserScanView({
     try {
       const result = await runScan({
         entityType: "job_offer",
-        entityValue: companyName.trim() || file?.name?.replace(/\.[^.]+$/, '') || "Offer Letter",
-        contextText: [companyName && `Company: ${companyName}`, contactEmail && `Email: ${contactEmail}`, contextText].filter(Boolean).join("\n"),
+        entityValue: companyName.trim(),
+        contextText: [
+          `Company: ${companyName.trim()}`,
+          `Email: ${emailTrim}`,
+          contextText.trim()
+        ].filter(Boolean).join("\n"),
         file: file || undefined,
         token: userToken,
       });
@@ -724,23 +765,33 @@ function UserScanView({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-200">Company Name (optional)</label>
+              <label className="text-sm font-bold text-slate-200 flex items-center gap-1.5">
+                <span>Organisation Name</span>
+                <span className="text-[#00FF87] font-black">*</span>
+                <span className="text-[11px] text-[#00FF87]/80 font-mono uppercase tracking-wider bg-[#00FF87]/10 px-2 py-0.5 rounded">Mandatory</span>
+              </label>
               <input
                 type="text"
-                placeholder="e.g. Infosys, TCS, IndiGo, TechVista..."
+                placeholder="e.g. Infosys, Tata Motors, IndiGo, TechVista..."
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
+                required
                 className="w-full px-5 py-3.5 rounded-2xl bg-[#0F131A] border-2 border-[#1E2838] text-base text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#00FF87]"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-200">Contact Email (optional)</label>
+              <label className="text-sm font-bold text-slate-200 flex items-center gap-1.5">
+                <span>HR / Recruiter Email</span>
+                <span className="text-[#00FF87] font-black">*</span>
+                <span className="text-[11px] text-[#00FF87]/80 font-mono uppercase tracking-wider bg-[#00FF87]/10 px-2 py-0.5 rounded">Mandatory</span>
+              </label>
               <input
                 type="email"
-                placeholder="e.g. hr@company.com"
+                placeholder="e.g. hr@company.com, careers@tatamotors.com"
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
+                required
                 className="w-full px-5 py-3.5 rounded-2xl bg-[#0F131A] border-2 border-[#1E2838] text-base text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#00FF87]"
               />
             </div>
@@ -852,11 +903,15 @@ function UserReportView({
   onNewScan,
   onOpenCopilot,
   onUpdateReport,
+  userToken,
+  userName,
 }: {
   report: LegitifyReport;
   onNewScan: () => void;
-  onOpenCopilot: () => void;
+  onOpenCopilot: (prompt?: string) => void;
   onUpdateReport?: (newReport: LegitifyReport) => void;
+  userToken?: string;
+  userName?: string;
 }) {
   const [reportState, setReportState] = useState<LegitifyReport>((rawReport as any)?.report || rawReport || {});
 
@@ -866,6 +921,7 @@ function UserReportView({
 
   const report = reportState;
   const [downloading, setDownloading] = useState(false);
+  const [showGeminiDetails, setShowGeminiDetails] = useState(false);
 
   const handleReinvestigate = async () => {
     if (!report.scan_id) return;
@@ -1077,82 +1133,143 @@ function UserReportView({
         </div>
       )}
 
-            {/* Section 1.8: VISUAL, SIGNATURE & LETTERHEAD FORENSICS */}
-      <div className="space-y-4">
-        <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
-          <span>✍️</span> Visual, Signature & Letterhead Authenticity Forensics
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
-            <div className="flex items-center justify-between">
-              <span className="text-2xl">🖋️</span>
-              <span className={`text-xs font-mono font-bold px-3 py-1 rounded-full ${
-                (report.document_analysis?.visual_forensics?.signature_detected || true)
-                  ? "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
-                  : "bg-red-500/20 text-[#FF3B5C] border border-red-500/40"
-              }`}>
-                {(report.document_analysis?.visual_forensics?.signature_type || "DETECTED").replace(/_/g, " ")}
-              </span>
+            {/* Section 1.5: WHY THIS RESULT? (Top 3 Key Evidentiary Drivers) */}
+      <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] shadow-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-black text-slate-100 flex items-center gap-2">
+            <span>💡</span> Why This Assessment? (Key Forensic Drivers)
+          </h3>
+          <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00FF87] border border-[#00FF87]/30 font-bold">
+            Evidence Trace Active
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {report.has_fee_demand ? (
+            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🚨</span>
+                <span className="text-xs font-bold text-red-300 uppercase tracking-wider">Payment Demand</span>
+              </div>
+              <p className="text-xs text-slate-200 font-medium">Candidate registration fee or caution deposit requested. Standard corporate hiring strictly prohibits applicant fees.</p>
             </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">✅</span>
+                <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Zero-Fee Compliance</span>
+              </div>
+              <p className="text-xs text-slate-200 font-medium">No upfront monetary demands or deposit clauses detected across document text.</p>
+            </div>
+          )}
+
+          {report.domain_analysis?.lookalike_detected ? (
+            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🚨</span>
+                <span className="text-xs font-bold text-red-300 uppercase tracking-wider">Lookalike Domain</span>
+              </div>
+              <p className="text-xs text-slate-200 font-medium">Communication domain appears to impersonate {report.domain_analysis.lookalike_target || 'official brand'}.</p>
+            </div>
+          ) : report.recruiter_analysis?.domain_alignment === 'EXACT_MATCH' ? (
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">✅</span>
+                <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Domain Aligned</span>
+              </div>
+              <p className="text-xs text-slate-200 font-medium">Recruiter sender domain aligns with corporate domain index.</p>
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚠️</span>
+                <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">Domain Unverified</span>
+              </div>
+              <p className="text-xs text-slate-200 font-medium">Sender domain could not be independently linked to official corporate web registry.</p>
+            </div>
+          )}
+
+          {report.company_verification?.status === 'ACTIVE' || (report.company_verification as any)?.status === 'LOCAL_REFERENCE_FOUND' ? (
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">✅</span>
+                <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Entity Matched</span>
+              </div>
+              <p className="text-xs text-slate-200 font-medium">Company legal name indexed in corporate reference dataset ({report.company_verification.legal_name || cleanCompany}).</p>
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700/40 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">ℹ️</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Registry Search</span>
+              </div>
+              <p className="text-xs text-slate-300 font-medium">Organization not matched in local index (Note: live statutory registry query unavailable; absence != fraud).</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section 1.8: VISUAL & SIGNATORY FORENSICS (Accurate Observation != Verification) */}
+      <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] shadow-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✍️</span>
             <div>
-              <h4 className="text-base font-black text-slate-100">Signatory Verification</h4>
-              <p className="text-xs text-slate-300 font-semibold mt-1">
-                {report.document_analysis?.visual_forensics?.signatory_name || "Authorized Signatory / HR Authority"}
-              </p>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                {report.document_analysis?.visual_forensics?.signatory_title || "Official Placement Authority"}
-              </p>
+              <h4 className="text-base font-black text-slate-100">Signatory & Visual Forensics</h4>
+              <p className="text-xs text-slate-400">Independent visual inspection of signatures, seals, and authority blocks</p>
             </div>
           </div>
+          <span className={`text-xs font-mono font-bold px-3 py-1 rounded-full ${
+            (report.signatory_forensics?.signature_detected || report.document_analysis?.visual_forensics?.signature_detected)
+              ? "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
+              : "bg-slate-800 text-slate-400 border border-slate-700"
+          }`}>
+            {(report.signatory_forensics?.identity_state || (report.document_analysis?.visual_forensics?.signature_detected ? "SIGNATORY_OBSERVED" : "NO_SIGNATURE_DETECTED")).replace(/_/g, " ")}
+          </span>
+        </div>
 
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
-            <div className="flex items-center justify-between">
-              <span className="text-2xl">🏛️</span>
-              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40">
-                LETTERHEAD IDENTIFIED
-              </span>
-            </div>
-            <div>
-              <h4 className="text-base font-black text-slate-100">Corporate Branding</h4>
-              <p className="text-xs text-slate-300 font-semibold mt-1">
-                Corporate Emblem / Letterhead Header
-              </p>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                Cross-referenced with {cleanCompany}
-              </p>
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-[#1E2838]">
+          <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838]">
+            <span className="text-[11px] font-mono text-slate-400 uppercase">Signature Type</span>
+            <p className="text-sm font-bold text-slate-100 mt-1">
+              {(report.signatory_forensics?.signature_type || (report.document_analysis?.visual_forensics?.signature_detected ? "VISUAL_SIGNATURE" : "ABSENT")).replace(/_/g, " ")}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {report.signatory_forensics?.signature_type === 'CRYPTOGRAPHIC_SIGNATURE' ? "Cryptographic cert validated" : "Visual observation only"}
+            </p>
           </div>
 
-          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
-            <div className="flex items-center justify-between">
-              <span className="text-2xl">📜</span>
-              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-blue-500/20 text-[#00F0FF] border border-blue-500/40">
-                LINE-BY-LINE PARSED
-              </span>
-            </div>
-            <div>
-              <h4 className="text-base font-black text-slate-100">Character & Layout Analysis</h4>
-              <p className="text-xs text-slate-300 font-semibold mt-1">
-                Terms of Employment & Compensation
-              </p>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                Full Verbatim Extraction Complete
-              </p>
-            </div>
+          <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838]">
+            <span className="text-[11px] font-mono text-slate-400 uppercase">Signatory Identity</span>
+            <p className="text-sm font-bold text-slate-100 mt-1">
+              {report.signatory_forensics?.signatory_name || report.document_analysis?.visual_forensics?.signatory_name || "Authorized HR Representative"}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {report.signatory_forensics?.signatory_title || report.document_analysis?.visual_forensics?.signatory_title || "Official Placement Authority"}
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838]">
+            <span className="text-[11px] font-mono text-slate-400 uppercase">Evidentiary Rule</span>
+            <p className="text-xs font-semibold text-amber-300 mt-1">
+              {(report.signatory_forensics?.signature_detected || report.document_analysis?.visual_forensics?.signature_detected)
+                ? "Observed in document. Does NOT automatically increase trust."
+                : "Absence of signature is NOT proof of fraud. Standard offer review recommended."}
+            </p>
           </div>
         </div>
       </div>
 
-{/* Section 2: Analysis Breakdown (10 Deterministic Forensic Dimensions) */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
-            <span>📐</span> 10-Dimension Forensic Integrity Grid
-          </h3>
-          <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00FF87] border border-[#00FF87]/30 font-bold">
-            LEGITIFY-SCORE-v2.0 (100% Deterministic)
-          </span>
-        </div>
+      {/* Section 2: Analysis Breakdown (10 Deterministic Forensic Dimensions) */}
+      <div className="space-y-8">
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
+                <span>📐</span> 10-Dimension Forensic Integrity Grid
+              </h3>
+              <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00FF87] border border-[#00FF87]/30 font-bold">
+                LEGITIFY-SCORE-v2.0 (100% Deterministic)
+              </span>
+            </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {[
@@ -1326,6 +1443,41 @@ function UserReportView({
         </div>
       </div>
 
+      {/* Section 4.1: Pipeline Execution Trace */}
+      {report.pipeline_trace?.stages && report.pipeline_trace.stages.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-black text-slate-100 flex items-center gap-2">
+              <span>⚡</span> End-to-End Pipeline Execution Trace
+            </h3>
+            <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00F0FF] border border-[#00F0FF]/30 font-bold">
+              {report.pipeline_trace.stages.length} Stages Executed · {report.pipeline_trace.totalDurationMs || 0}ms
+            </span>
+          </div>
+          <div className="rounded-2xl border border-[#1E2838] bg-[#0D1117] p-4 divide-y divide-[#1E2838]/60 font-mono text-xs">
+            {report.pipeline_trace.stages.map((stg, sIdx) => (
+              <div key={sIdx} className="py-2.5 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                    stg.status === 'PASS' ? 'bg-emerald-500/20 text-[#00FF87]' :
+                    stg.status === 'SKIP' ? 'bg-slate-700/40 text-slate-400' :
+                    'bg-amber-500/20 text-amber-300'
+                  }`}>
+                    {stg.status}
+                  </span>
+                  <span className="text-slate-200 font-semibold">{stg.stage}</span>
+                </div>
+                <div className="flex items-center gap-4 text-slate-400 text-right">
+                  <span className="truncate max-w-md hidden sm:inline text-slate-400">{stg.detail}</span>
+                  <span className="text-slate-500 font-bold">{stg.durationMs}ms</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </div>
+
       {/* Section 4.5: Multi-Signal Forensic Reasoning & Pattern Synthesis */}
       <ForensicExplanationPanel
         explanationSummary={(report as any).explanation_summary}
@@ -1343,13 +1495,22 @@ function UserReportView({
         onReinvestigate={handleReinvestigate}
       />
 
+      {/* Section 4.7: Interactive Evidence-Grounded AI Copilot */}
+      <ReportCopilotInline
+        report={report}
+        companyName={cleanCompany}
+        userToken={userToken}
+        userName={userName}
+        onOpenFullscreenCopilot={onOpenCopilot}
+      />
+
       {/* Footer Actions */}
       <div className="flex flex-wrap items-center gap-4 pt-4">
         <button
-          onClick={onOpenCopilot}
+          onClick={() => onOpenCopilot()}
           className="flex-1 py-4 rounded-2xl bg-[#0F131A] hover:bg-[#151B26] border-2 border-[#00FF87]/40 text-base font-black text-[#00FF87] flex items-center justify-center gap-3 transition-all cursor-pointer shadow-lg"
         >
-          <Brain className="w-5 h-5" /> Interrogate Evidence with Trust AI Copilot
+          <Brain className="w-5 h-5" /> Full Copilot Workspace
         </button>
         <button
           onClick={onNewScan}
@@ -1363,7 +1524,170 @@ function UserReportView({
 }
 
 // ================================================================
-// EVIDENCE-GROUNDED INVESTIGATION COPILOT VIEW (WITH ALL 10 TOOLS)
+// INLINE REPORT COPILOT CARD (EMBEDDED DIRECTLY IN SAFETY REPORT)
+// ================================================================
+
+function ReportCopilotInline({
+  report,
+  companyName,
+  userToken,
+  userName,
+  onOpenFullscreenCopilot,
+}: {
+  report: LegitifyReport;
+  companyName: string;
+  userToken?: string;
+  userName?: string;
+  onOpenFullscreenCopilot: (prompt?: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const SUGGESTIONS = [
+    { label: "🎯 Why this score?", prompt: "Why did LEGITIFY assign this score and verdict?" },
+    { label: "📧 Is recruiter real?", prompt: "Is this recruiter email domain authentic or a lookalike?" },
+    { label: "💰 Stipend plausibility?", prompt: "Is the offered stipend normal or suspiciously high?" },
+    { label: "🏢 MCA registration", prompt: "Is this company registered with the Ministry of Corporate Affairs?" },
+    { label: "⚠️ What if I paid money?", prompt: "What emergency steps should I take if I already paid a deposit?" },
+    { label: "✉️ Draft verification email", prompt: "Generate verification questions I should send to this recruiter." },
+  ];
+
+  const handleAsk = async (questionText?: string) => {
+    const q = (questionText || query).trim();
+    if (!q || loading) return;
+    setLastQuestion(q);
+    setLoading(true);
+    setQuery("");
+
+    try {
+      const enriched = { ...report, user_name: userName || "Candidate" };
+      const res = await askCopilot(enriched, q, userToken);
+      setAnswer(res);
+    } catch {
+      setAnswer(
+        `### 🛡️ Evidence Summary for ${companyName}\n\n` +
+        `* **Trust Score:** **${report.trust_score ?? 26}/100**\n` +
+        `* **Verdict:** **${report.verdict || "ANALYSIS COMPLETE"}**\n` +
+        `* **Fee Requirement:** ${report.has_fee_demand ? "⚠️ Caution/training deposit demanded (Scam Indicator)" : "✅ No fee detected"}\n\n` +
+        `*Genuine organizations never request upfront payments or security deposits from job applicants.*`
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!answer) return;
+    navigator.clipboard.writeText(answer);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="p-8 rounded-3xl bg-gradient-to-br from-[#0D1117] via-[#101622] to-[#0A0D14] border-2 border-[#1E2838] shadow-2xl space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1E2838] pb-5">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-[#00FF87]/20 border-2 border-[#00FF87] flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(0,255,135,0.3)]">
+            🤖
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xl font-black text-slate-100">
+                Interrogate Report with Trust AI Copilot
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full bg-[#00FF87]/20 text-[#00FF87] text-xs font-mono font-bold border border-[#00FF87]/40">
+                LIVE
+              </span>
+            </div>
+            <p className="text-sm text-slate-400">
+              Ask anything about {companyName}'s offer letter, domain checks, or fee clauses.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => onOpenFullscreenCopilot(lastQuestion || undefined)}
+          className="px-4 py-2.5 rounded-2xl bg-[#131822] hover:bg-[#1A2232] border border-[#1E2838] text-xs font-bold text-[#00F0FF] hover:text-white flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:border-[#00F0FF]/50 flex-shrink-0"
+        >
+          <Brain className="w-4 h-4" /> Full Copilot Workspace
+        </button>
+      </div>
+
+      {/* Suggested Quick Question Chips */}
+      <div className="flex flex-wrap gap-2">
+        {SUGGESTIONS.map((item, idx) => (
+          <button
+            key={idx}
+            onClick={() => handleAsk(item.prompt)}
+            className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-[#131822] hover:bg-[#1C2536] border border-[#1E2838] text-slate-300 hover:text-[#00FF87] transition-all cursor-pointer shadow-sm hover:border-[#00FF87]/50"
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Input Box */}
+      <div className="flex items-center gap-3">
+        <input
+          type="text"
+          placeholder={`Ask any question about ${companyName} (e.g. 'Why is the joining date urgent?' or 'Is this stipend real?')...`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAsk()}
+          className="flex-1 px-5 py-3.5 rounded-2xl bg-[#131822] border-2 border-[#1E2838] text-sm md:text-base text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#00FF87]"
+        />
+        <button
+          onClick={() => handleAsk()}
+          disabled={loading || !query.trim()}
+          className="px-6 py-3.5 rounded-2xl bg-[#00FF87] hover:bg-[#D4FF00] text-black font-black text-sm md:text-base transition-all shadow-[0_0_15px_rgba(0,255,135,0.4)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex-shrink-0 flex items-center gap-2"
+        >
+          {loading ? <Sparkles className="w-4 h-4 animate-spin" /> : "Ask"}
+        </button>
+      </div>
+
+      {/* Loading state */}
+      {loading && (
+        <div className="p-6 rounded-2xl bg-[#0D1117] border border-[#1E2838] flex items-center gap-3 text-sm text-[#00FF87]">
+          <Sparkles className="w-5 h-5 animate-spin flex-shrink-0" />
+          <span className="font-bold">Interrogating evidence locker and running evidence-grounded synthesis...</span>
+        </div>
+      )}
+
+      {/* Answer display */}
+      {answer && !loading && (
+        <div className="p-6 rounded-2xl bg-[#0A0D14] border-2 border-[#1E2838] space-y-4">
+          <div className="flex items-center justify-between border-b border-[#1E2838] pb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-black text-[#00F0FF] uppercase tracking-wider">
+                Question:
+              </span>
+              <span className="text-sm font-bold text-slate-200">
+                "{lastQuestion}"
+              </span>
+            </div>
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#131822] text-xs font-bold text-slate-400 hover:text-slate-200 border border-[#1E2838] cursor-pointer"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-[#00FF87]" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? "Copied" : "Copy"}</span>
+            </button>
+          </div>
+
+          <div className="max-h-[380px] overflow-y-auto pr-2">
+            <FormattedCopilotMessage text={answer} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================================================================
+// EVIDENCE-GROUNDED INVESTIGATION COPILOT VIEW (WITH CATEGORIES & TOOLS)
 // ================================================================
 
 function UserCopilotView({
@@ -1386,33 +1710,52 @@ function UserCopilotView({
   const trustScore = typeof report.confidence_score === "number" ? Math.round(report.confidence_score) : typeof report.trust_score === "number" ? Math.round(report.trust_score) : 26;
 
   const [question, setQuestion] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string; time: string }[]>([
     {
       role: "assistant",
-      text: `Hello ${userName || "Sanjay Kumar"}! 👋\n\n### 🛡️ LEGITIFY Evidence-Grounded Investigation Copilot Active
-
-**Active Investigation Context:**
-* **Target Opportunity:** **${cleanCompany}**
-* **Trust Score:** **${trustScore}/100** (${trustScore <= 40 ? '🚨 High Risk / Scam Alert' : '✅ Low Risk Profile'})
-
-I am strictly grounded in our **Evidence Locker ([E-001] to [E-006])**. I do not guess or hallucinate. Use the quick-action investigation tools below to drill down into evidence:`,
+      text: `Hello ${userName || "Sanjay Kumar"}! 👋\n\n### 🛡️ LEGITIFY Evidence-Grounded Investigation Copilot Active\n\n**Active Investigation Context:**\n* **Target Opportunity:** **${cleanCompany}**\n* **Trust Score:** **${trustScore}/100** (${trustScore <= 40 ? '🚨 High Risk / Scam Alert' : '✅ Low Risk Profile'})\n\nI am strictly grounded in our **Evidence Locker ([E-001] to [E-006])** and Dual RAG records. I do not guess or hallucinate. Use the quick-action investigation categories below, or type any question you have!`,
       time: "Just now",
     }
   ]);
   const [loading, setLoading] = useState(false);
 
-  const QUICK_TOOLS = [
-    { label: "🔍 Explain Decision", query: "Why did LEGITIFY give this score and verdict?" },
-    { label: "🏢 Verify Company", query: "Is the company actually registered and legally active?" },
-    { label: "👤 Verify Recruiter", query: "Is this recruiter email really associated with the company?" },
-    { label: "📜 Certificate Check", query: "The certificate appears genuine. Why is the internship still risky?" },
-    { label: "🌎 Community Evidence", query: "What did people online and public forums say about this company?" },
-    { label: "⚠️ Find Red Flags", query: "Show me the strongest warning signals and evidence IDs." },
-    { label: "🛡️ False Positive Check", query: "Could this assessment be a false positive?" },
-    { label: "❓ Generate Questions", query: "Generate verification questions I should send to this recruiter." },
-    { label: "⏱️ 30s Parent Summary", query: "Give me a 30-second simple explanation I can tell my parents." },
-    { label: "⚔️ Challenge Result", query: "I know this company personally and want to challenge this result." },
+  const CATEGORIES = [
+    { id: "all", label: "🔥 All Quick Checks" },
+    { id: "score", label: "🔍 Forensic Scoring" },
+    { id: "recruiter", label: "👤 Recruiter & Domain" },
+    { id: "financial", label: "💰 Stipend & Fee" },
+    { id: "legal", label: "🏢 MCA21 & Legal" },
+    { id: "emergency", label: "🚨 Emergency Actions" },
   ];
+
+  const QUICK_TOOLS = [
+    { cat: "score", label: "🔍 Explain Decision", query: "Why did LEGITIFY give this score and verdict?" },
+    { cat: "legal", label: "🏢 Verify Company", query: "Is the company actually registered and legally active in MCA21?" },
+    { cat: "recruiter", label: "👤 Verify Recruiter", query: "Is this recruiter email really associated with the company?" },
+    { cat: "financial", label: "💰 Stipend Plausibility", query: "Is the offered stipend normal or suspiciously inflated?" },
+    { cat: "financial", label: "⚠️ Deposit Clauses", query: "Can a genuine company ask candidates to pay a laptop deposit or training fee?" },
+    { cat: "recruiter", label: "📜 Certificate Check", query: "The certificate appears genuine. Why is the internship still risky?" },
+    { cat: "score", label: "🌎 Community Evidence", query: "What did people online and public forums say about this company?" },
+    { cat: "score", label: "⚠️ Find Red Flags", query: "Show me the strongest warning signals and evidence IDs." },
+    { cat: "score", label: "🛡️ False Positive Check", query: "Could this assessment be a false positive?" },
+    { cat: "recruiter", label: "❓ Generate HR Questions", query: "Generate verification questions I should send to this recruiter." },
+    { cat: "emergency", label: "⏱️ 30s Parent Summary", query: "Give me a 30-second simple explanation I can tell my parents." },
+    { cat: "emergency", label: "🚨 What If I Paid?", query: "What emergency steps should I take if I already paid a deposit?" },
+    { cat: "score", label: "⚔️ Challenge Result", query: "I know this company personally and want to challenge this result." },
+  ];
+
+  const filteredTools = categoryFilter === "all" ? QUICK_TOOLS : QUICK_TOOLS.filter(t => t.cat === categoryFilter);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
 
   const handleSend = async (queryText?: string) => {
     const q = (queryText || question).trim();
@@ -1469,6 +1812,29 @@ I am strictly grounded in our **Evidence Locker ([E-001] to [E-006])**. I do not
     }
   };
 
+  const handleClearHistory = () => {
+    setMessages([
+      {
+        role: "assistant",
+        text: `Chat reset. Active investigation target: **${cleanCompany}** (${trustScore}/100).\n\nFeel free to ask any question grounded in the evidence records!`,
+        time: "Just now",
+      }
+    ]);
+  };
+
+  const handleDownloadTranscript = () => {
+    const transcript = `# LEGITIFY Investigation Copilot Transcript\n\nTarget: ${cleanCompany}\nCase: #${report.scan_id || "LGF-2026-000184"}\nScore: ${trustScore}/100\nDate: ${new Date().toLocaleString()}\n\n---\n\n` +
+      messages.map(m => `### ${m.role === "user" ? "Candidate" : "LEGITIFY Copilot"} (${m.time})\n\n${m.text}\n\n---\n`).join("\n");
+    const blob = new Blob([transcript], { type: "text/markdown;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Legitify_Copilot_${(cleanCompany || "report").replace(/[^a-zA-Z0-9]/g, "_")}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   useEffect(() => {
     if (initialQuestion) {
       handleSend(initialQuestion);
@@ -1489,6 +1855,23 @@ I am strictly grounded in our **Evidence Locker ([E-001] to [E-006])**. I do not
             </h3>
             <p className="text-sm text-slate-400 font-mono">Target: {cleanCompany} · Case: #{report.scan_id || "LGF-2026-000184"}</p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownloadTranscript}
+            className="px-4 py-2 rounded-2xl bg-[#131822] hover:bg-[#1A2232] border border-[#1E2838] text-xs font-bold text-slate-300 hover:text-[#00FF87] flex items-center gap-2 transition-all cursor-pointer"
+            title="Download Transcript"
+          >
+            <Download className="w-4 h-4" /> Download Transcript
+          </button>
+          <button
+            onClick={handleClearHistory}
+            className="px-4 py-2 rounded-2xl bg-[#131822] hover:bg-[#1A2232] border border-[#1E2838] text-xs font-bold text-slate-300 hover:text-[#FF3B5C] flex items-center gap-2 transition-all cursor-pointer"
+            title="Clear Chat"
+          >
+            <RefreshCw className="w-4 h-4" /> Reset Chat
+          </button>
         </div>
       </div>
 
@@ -1518,12 +1901,31 @@ I am strictly grounded in our **Evidence Locker ([E-001] to [E-006])**. I do not
             <span className="font-bold">Retrieving Evidence Locker records & citations...</span>
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Action Buttons & Input Box */}
+      {/* Quick Action Category Filters & Buttons */}
       <div className="p-6 border-t border-[#1E2838] bg-[#0A0D14]">
+        {/* Category Filter Pills */}
+        <div className="max-w-4xl mx-auto flex items-center gap-2 mb-3 overflow-x-auto pb-1">
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setCategoryFilter(cat.id)}
+              className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                categoryFilter === cat.id
+                  ? "bg-[#00FF87] text-black font-black shadow-[0_0_10px_rgba(0,255,135,0.4)]"
+                  : "bg-[#131822] text-slate-400 hover:text-slate-200 border border-[#1E2838]"
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Quick Tools list */}
         <div className="max-w-4xl mx-auto flex flex-wrap gap-2.5 mb-4">
-          {QUICK_TOOLS.map((tool, i) => (
+          {filteredTools.map((tool, i) => (
             <button
               key={i}
               onClick={() => handleSend(tool.query)}
@@ -1547,6 +1949,274 @@ I am strictly grounded in our **Evidence Locker ([E-001] to [E-006])**. I do not
             onClick={() => handleSend()}
             disabled={loading}
             className="px-8 py-4 rounded-3xl bg-[#00FF87] hover:bg-[#D4FF00] text-black font-black text-base transition-all shadow-[0_0_20px_rgba(0,255,135,0.4)] flex-shrink-0 cursor-pointer"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ================================================================
+// PERSISTENT FLOATING AI COPILOT ASSISTANT (AVAILABLE ON EVERY VIEW)
+// ================================================================
+
+function FloatingCopilotWidget({
+  report,
+  userToken,
+  userName,
+}: {
+  report: LegitifyReport;
+  userToken?: string;
+  userName?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const rawName = report.company_name || report.entity_name || report.entity_value || "Investigated Offer";
+  const cleanCompany = (rawName.match(/(\.(png|jpg|jpeg|pdf)$|^offer_letter|^images|^image\s*\(|^screenshot)/i))
+    ? (report.document_analysis?.extracted_entities?.detected_company || "Investigated Organization")
+    : rawName;
+
+  const trustScore = typeof report.confidence_score === "number"
+    ? Math.round(report.confidence_score)
+    : (typeof report.trust_score === "number" ? Math.round(report.trust_score) : 26);
+
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string; time: string }[]>([
+    {
+      role: "assistant",
+      text: `Hello ${userName || "Candidate"}! 👋\n\n### 🛡️ LEGITIFY AI Copilot Active\n\nI am your evidence-grounded assistant for **${cleanCompany}**.\n\nYou can ask me any question about the offer, recruiter validity, stipend rates, MCA records, or what to do next. Type your question below or click a quick prompt!`,
+      time: "Just now",
+    }
+  ]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    if (isOpen && !isMinimized) {
+      scrollToBottom();
+    }
+  }, [messages, isOpen, isMinimized]);
+
+  const handleSend = async (customPrompt?: string) => {
+    const q = (customPrompt || input).trim();
+    if (!q || loading) return;
+    setInput("");
+    const newHistory = [
+      ...messages,
+      { role: "user" as const, text: q, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+    ];
+    setMessages(newHistory);
+    setLoading(true);
+
+    try {
+      const enriched = { ...report, user_name: userName || "Candidate" };
+      const ans = await askCopilot(enriched, q, userToken);
+      setMessages([
+        ...newHistory,
+        { role: "assistant", text: ans, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+      ]);
+    } catch {
+      const isHighRisk = (report.trust_score || 0) < 60;
+      setMessages([
+        ...newHistory,
+        {
+          role: "assistant",
+          text: `### 📊 Forensic Assessment for ${cleanCompany}\n\n` +
+            `* **Overall Risk:** ${isHighRisk ? '🔴 **HIGH RISK (Scam Indicators Present)**' : '🟢 **LOW RISK (Verified Structure)**'}\n` +
+            `* **Evaluated Trust Score:** **${trustScore}/100**\n` +
+            `* **Fee Requirement:** ${report.has_fee_demand ? '🔴 Security/registration deposit required' : '🟢 No fee demanded'}\n\n` +
+            `> *Reminder: Real companies never charge candidates for internship selection or laptops. Call 1930 if fraud is suspected.*`,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const QUICK_PROMPTS = [
+    { label: "Why this score?", prompt: "Why did LEGITIFY assign this score and verdict?" },
+    { label: "Recruiter domain real?", prompt: "Is the recruiter email domain genuine or a lookalike domain?" },
+    { label: "Stipend plausibility?", prompt: "Is the offered stipend normal or suspiciously inflated?" },
+    { label: "Company MCA status", prompt: "Is this company legally registered in MCA21 records?" },
+    { label: "What if I paid money?", prompt: "What should I do right now if I transferred money to this recruiter?" },
+    { label: "Generate HR questions", prompt: "Generate verification questions I should send to this recruiter." },
+    { label: "Explain to parents", prompt: "Give me a 30-second explanation I can tell my parents about this offer." },
+  ];
+
+  const clearChat = () => {
+    setMessages([
+      {
+        role: "assistant",
+        text: `Chat cleared. Ready for your questions about **${cleanCompany}**! Ask me anything about the offer letter, recruiter, or safety checks.`,
+        time: "Just now",
+      }
+    ]);
+  };
+
+  // If closed: show floating toggle button
+  if (!isOpen) {
+    return (
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={() => { setIsOpen(true); setIsMinimized(false); }}
+          className="group flex items-center gap-3 px-5 py-3.5 rounded-full bg-gradient-to-r from-[#00FF87] to-[#00F0FF] text-black font-black text-sm md:text-base shadow-[0_0_25px_rgba(0,255,135,0.5)] hover:shadow-[0_0_35px_rgba(0,240,255,0.7)] hover:scale-105 active:scale-95 transition-all cursor-pointer"
+        >
+          <div className="relative">
+            <span className="text-xl">🤖</span>
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-700 border border-white animate-pulse" />
+          </div>
+          <span className="tracking-wide">Ask AI Copilot</span>
+          <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-black/20 text-black text-xs font-mono font-extrabold">
+            ONLINE
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  // If minimized: show compact pill
+  if (isMinimized) {
+    return (
+      <div className="fixed bottom-6 right-6 z-50">
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#0D1117] border-2 border-[#00FF87]/50 shadow-2xl">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setIsMinimized(false)}>
+            <span className="text-lg">🤖</span>
+            <span className="text-sm font-bold text-slate-100">Trust Copilot</span>
+            <span className="w-2 h-2 rounded-full bg-[#00FF87] animate-pulse" />
+          </div>
+          <div className="flex items-center gap-1 pl-2 border-l border-[#1E2838]">
+            <button
+              onClick={() => setIsMinimized(false)}
+              className="p-1 text-slate-400 hover:text-slate-100 cursor-pointer"
+              title="Expand"
+            >
+              <ArrowRight className="w-4 h-4 rotate-[-45deg]" />
+            </button>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="p-1 text-slate-400 hover:text-[#FF3B5C] cursor-pointer"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Full floating window
+  return (
+    <div className="fixed bottom-6 right-6 z-50 w-[440px] max-w-[calc(100vw-32px)] h-[620px] max-h-[calc(100vh-48px)] flex flex-col rounded-3xl bg-[#0B0F17]/95 backdrop-blur-2xl border-2 border-[#1E2838] shadow-[0_25px_60px_rgba(0,0,0,0.9)] overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* Widget Header */}
+      <div className="px-5 py-4 border-b border-[#1E2838] bg-[#0D1117] flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-[#00FF87]/20 border border-[#00FF87] flex items-center justify-center text-xl shadow-[0_0_12px_rgba(0,255,135,0.3)]">
+            🤖
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-black text-slate-100">LEGITIFY Trust Copilot</h4>
+              <span className="w-2 h-2 rounded-full bg-[#00FF87] animate-pulse" />
+            </div>
+            <p className="text-xs text-slate-400 font-mono truncate max-w-[200px]">
+              {cleanCompany} ({trustScore}/100)
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={clearChat}
+            className="p-1.5 rounded-xl hover:bg-[#1A2232] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+            title="Clear Chat History"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setIsMinimized(true)}
+            className="p-1.5 rounded-xl hover:bg-[#1A2232] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+            title="Minimize"
+          >
+            <ChevronRight className="w-4 h-4 rotate-90" />
+          </button>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-1.5 rounded-xl hover:bg-[#1A2232] text-slate-400 hover:text-[#FF3B5C] transition-colors cursor-pointer"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Messages Thread */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((m, idx) => (
+          <div key={idx} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
+            <div
+              className={`max-w-[88%] p-4 rounded-2xl ${
+                m.role === "user"
+                  ? "bg-[#00FF87] text-black font-extrabold rounded-br-none text-sm shadow-md"
+                  : "bg-[#131822] border border-[#1E2838] text-slate-100 rounded-bl-none text-sm shadow-md"
+              }`}
+            >
+              {m.role === "user" ? (
+                <span>{m.text}</span>
+              ) : (
+                <FormattedCopilotMessage text={m.text} />
+              )}
+            </div>
+            <span className="text-[10px] text-slate-500 font-mono mt-1 px-1">{m.time}</span>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex items-center gap-2 text-xs text-[#00FF87] p-3 rounded-2xl bg-[#131822] border border-[#1E2838] max-w-[80%]">
+            <Sparkles className="w-4 h-4 animate-spin flex-shrink-0" />
+            <span className="font-bold">Interrogating evidence & reasoning...</span>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Quick Prompts Bar */}
+      <div className="px-4 py-2 border-t border-[#1E2838] bg-[#0A0D14] flex-shrink-0">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+          {QUICK_PROMPTS.map((q, i) => (
+            <button
+              key={i}
+              onClick={() => handleSend(q.prompt)}
+              className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#131822] hover:bg-[#1E2838] border border-[#1E2838] text-slate-300 hover:text-[#00FF87] whitespace-nowrap cursor-pointer transition-all flex-shrink-0"
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Input Box */}
+      <div className="p-3 border-t border-[#1E2838] bg-[#0D1117] flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Ask anything grounded in evidence..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            className="flex-1 px-4 py-2.5 rounded-2xl bg-[#131822] border border-[#1E2838] text-xs md:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#00FF87]"
+          />
+          <button
+            onClick={() => handleSend()}
+            disabled={loading || !input.trim()}
+            className="px-4 py-2.5 rounded-2xl bg-[#00FF87] hover:bg-[#D4FF00] text-black font-black text-xs md:text-sm transition-all shadow-[0_0_15px_rgba(0,255,135,0.3)] disabled:opacity-40 cursor-pointer flex-shrink-0"
           >
             Send
           </button>
@@ -1866,6 +2536,7 @@ function AdminSidebar({ active, onNav }: { active: AdminView; onNav: (v: AdminVi
   const ITEMS: { id: AdminView; label: string; emoji: string; badge?: string }[] = [
     { id: "admin_mission",       label: "Mission Operations",     emoji: "⚡" },
     { id: "admin_scan",          label: "Live Pipeline Scan",      emoji: "🔍", badge: "RUN" },
+    { id: "admin_copilot",       label: "Trust AI Copilot",       emoji: "🤖", badge: "AI" },
     { id: "admin_threats",       label: "Threat Intelligence IOC",emoji: "🚨" },
     { id: "admin_analytics",     label: "Platform Telemetry",     emoji: "📈" },
     { id: "admin_cases",         label: "Case Registry & Review", emoji: "📁", badge: "EDIT" },
@@ -2250,6 +2921,11 @@ export function App() {
         portalRole={portalRole}
         user={user}
         onSignOut={handleSignOut}
+        onSwitchRole={(role) => {
+          setPortalRole(role);
+          if (role === "user") setUserView("user_scan");
+          else setAdminView("admin_mission");
+        }}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -2269,8 +2945,10 @@ export function App() {
                 <UserReportView
                   report={currentReport}
                   onNewScan={() => setUserView("user_scan")}
-                  onOpenCopilot={() => setUserView("user_copilot")}
+                  onOpenCopilot={handleOpenCopilotWithPrompt}
                   onUpdateReport={(newReport) => setCurrentReport(newReport)}
+                  userToken={session?.access_token}
+                  userName={user?.user_metadata?.full_name || "Sanjay Kumar. V"}
                 />
               )}
               {userView === "user_copilot" && (
@@ -2320,6 +2998,14 @@ export function App() {
                   userName="Security Admin"
                 />
               )}
+              {adminView === "admin_copilot" && (
+                <UserCopilotView
+                  report={currentReport}
+                  userToken={session?.access_token}
+                  userName="Security Admin"
+                  initialQuestion={copilotInitialPrompt}
+                />
+              )}
               {adminView === "admin_threats" && <AdminThreatsView />}
               {adminView === "admin_analytics" && <AdminAnalyticsView />}
               {adminView === "admin_cases" && (
@@ -2348,6 +3034,13 @@ export function App() {
           </>
         )}
       </div>
+
+      {/* Persistent Interactive AI Copilot Floating Assistant */}
+      <FloatingCopilotWidget
+        report={currentReport}
+        userToken={session?.access_token}
+        userName={user?.user_metadata?.full_name || (portalRole === "admin" ? "Security Admin" : "Sanjay Kumar. V")}
+      />
     </div>
   );
 }

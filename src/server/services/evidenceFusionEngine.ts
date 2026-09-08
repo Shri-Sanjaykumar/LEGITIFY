@@ -275,6 +275,18 @@ export function runEvidenceFusion(input: FusionInput): EvidenceFusionResult {
           evidenceIds: [],
         });
       }
+    } else if (cluster.independentReports === 2) {
+      const prevScore = workingScore;
+      workingScore = Math.max(1, workingScore - 15);
+      hardRulesTriggered.push({
+        ruleId: 'CORROBORATED_REPORT_PENALTY',
+        name: 'Two Independent Candidate Reports Corroborated',
+        triggerCondition: '2 independent candidate reports reference matching anomalies',
+        effect: 'Trust score reduced by 15 points (no hard cap)',
+        scoreBefore: prevScore,
+        scoreAfter: workingScore,
+        evidenceIds: [],
+      });
     }
   }
 
@@ -292,10 +304,16 @@ export function runEvidenceFusion(input: FusionInput): EvidenceFusionResult {
     }
   }
 
-  const finalTrustScore = Math.round(Math.max(1, Math.min(99, workingScore)));
+  const isInsufficient = (input.legitifyResult.verdict === 'INSUFFICIENT_EVIDENCE' || input.legitifyResult.trust_score === 0)
+    && !input.hasFeeDemand
+    && !input.hasLookalikeDomain
+    && !input.hasKnownThreat
+    && uniqueGeminiIds.length === 0;
+
+  const finalTrustScore = isInsufficient ? 0 : Math.round(Math.max(1, Math.min(99, workingScore)));
 
   // ---- Step 7: Calculate final evidence confidence ----
-  const finalEvidenceConfidence = calculateFusedConfidence(
+  const finalEvidenceConfidence = isInsufficient ? 0 : calculateFusedConfidence(
     input.legitifyResult.confidence_score,
     geminiAvailable,
     input.geminiResult?.confidence,
@@ -304,7 +322,7 @@ export function runEvidenceFusion(input: FusionInput): EvidenceFusionResult {
   );
 
   // ---- Step 8: Determine final risk level and verdict ----
-  let { riskLevel, verdict } = determineRiskLevelAndVerdict(finalTrustScore);
+  let { riskLevel, verdict } = determineRiskLevelAndVerdict(finalTrustScore, isInsufficient);
 
   // False-positive override for early-stage startups with zero fee demand
   if (input.isYoungStartup && !input.hasFeeDemand && !input.hasLookalikeDomain && !input.hasKnownThreat) {
@@ -315,7 +333,7 @@ export function runEvidenceFusion(input: FusionInput): EvidenceFusionResult {
   }
 
   // Calculate Fraud Confidence (0 - 100)
-  let fraudConfidence = 10;
+  let fraudConfidence = isInsufficient ? 0 : 10;
   if (input.hasFeeDemand || input.fraudPatterns?.some(p => p.patternId === 'FP001')) {
     fraudConfidence = Math.max(fraudConfidence, 96);
   }
@@ -550,10 +568,13 @@ function calculateFusedConfidence(
  * Determine risk level and verdict from final trust score.
  * DETERMINISTIC: same score → same verdict.
  */
-function determineRiskLevelAndVerdict(trustScore: number): {
+function determineRiskLevelAndVerdict(trustScore: number, isInsufficient = false): {
   riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
   verdict: string;
 } {
+  if (isInsufficient || trustScore === 0) {
+    return { riskLevel: 'MODERATE', verdict: 'INSUFFICIENT EVIDENCE / REVIEW' };
+  }
   if (trustScore >= 80) return { riskLevel: 'LOW', verdict: 'LIKELY LEGITIMATE' };
   if (trustScore >= 65) return { riskLevel: 'LOW', verdict: 'LOW RISK' };
   if (trustScore >= 45) return { riskLevel: 'MODERATE', verdict: 'MODERATE RISK' };

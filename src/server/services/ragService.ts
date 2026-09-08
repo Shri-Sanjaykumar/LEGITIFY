@@ -1,140 +1,226 @@
 // ==============================================================================
-// LEGITIFY RAG KNOWLEDGE RETRIEVAL SERVICE
-// Multi-Tiered Knowledge Chunks (Authoritative, High-Quality, Community)
+// LEGITIFY DECOUPLED DUAL RAG RETRIEVAL SERVICE
+// Logically separates DOCUMENT_RAG from EXTERNAL_EVIDENCE_RAG
 // ==============================================================================
-import { RAGKnowledgeChunk } from '../../types';
+import { RAGKnowledgeChunk, EvidenceItem } from '../../types';
 
-// Built-in Knowledge Base for Grounded Corporate, Regulatory & Threat Verification
-const KNOWLEDGE_STORE: RAGKnowledgeChunk[] = [
-  // TIER 1: Official Regulatory & Government Cybercrime Advisories
-  {
-    document_id: "DOC-REG-001",
-    chunk_id: "CHK-REG-001",
-    title: "National Cybercrime Reporting Portal Advisory on Employment Fraud",
-    content: "Under Indian Cybercrime Advisories & Ministry of Labour Guidelines, legitimate companies NEVER charge candidates upfront registration, document verification, caution deposit, or training fees. Demanding payment before joining via UPI or bank transfer is a primary indicator of employment fraud. Report incidents to Cybercrime Helpline 1930.",
-    source: "National Cybercrime Reporting Portal (cybercrime.gov.in)",
-    source_type: "CYBERCRIME_ADVISORY",
-    source_url: "https://cybercrime.gov.in",
-    authority_level: "TIER_1_AUTHORITATIVE",
-  },
-  {
-    document_id: "DOC-REG-002",
-    chunk_id: "CHK-REG-002",
-    title: "Ministry of Corporate Affairs (MCA21) Verification Protocol",
-    content: "Companies incorporated in India carry a 21-digit Corporate Identification Number (CIN) or 7-digit LLP Identification Number (LLPIN). An active status in MCA21 confirms legal existence, but does not verify whether external recruiters communicating via free webmail (@gmail.com) are authorized agents.",
-    source: "Ministry of Corporate Affairs, Government of India (mca.gov.in)",
-    source_type: "GOVERNMENT_REGISTRY",
-    source_url: "https://www.mca.gov.in",
-    authority_level: "TIER_1_AUTHORITATIVE",
-  },
-  {
-    document_id: "DOC-REG-003",
-    chunk_id: "CHK-REG-003",
-    title: "AICTE & UGC Guidelines on Student Internships",
-    content: "AICTE strictly prohibits charging fees from students for academic or industry internships. Stipendiary or non-stipendiary internships must not mandate purchasing training kits, courses, or certificates as a prerequisite for commencement.",
-    source: "All India Council for Technical Education (aicte-india.org)",
-    source_type: "CYBERCRIME_ADVISORY",
-    source_url: "https://www.aicte-india.org",
-    authority_level: "TIER_1_AUTHORITATIVE",
-  },
-  // TIER 1: Corporate Enterprise Recruitment Policies
-  {
-    document_id: "DOC-CORP-TCS",
-    chunk_id: "CHK-CORP-TCS",
-    title: "Tata Consultancy Services (TCS) Official Careers Authentication Policy",
-    content: "TCS does not charge any fee at any stage of the recruitment process. All official communications are sent exclusively from @tcs.com email domains. TCS does not use Gmail, Yahoo, WhatsApp, or Telegram for recruitment offers.",
-    source: "Tata Consultancy Services Official Career Portal",
-    source_type: "COMPANY_CAREERS",
-    source_url: "https://www.tcs.com/careers",
-    authority_level: "TIER_1_AUTHORITATIVE",
-  },
-  {
-    document_id: "DOC-CORP-INFOSYS",
-    chunk_id: "CHK-CORP-INFOSYS",
-    title: "Infosys Official Recruitment Fraud Warning",
-    content: "Infosys never asks for money or security deposits for internships or employment. Offer letters are verified through the official Infosys Launchpad portal and originate exclusively from @infosys.com.",
-    source: "Infosys Official Career Portal",
-    source_type: "COMPANY_CAREERS",
-    source_url: "https://www.infosys.com/careers",
-    authority_level: "TIER_1_AUTHORITATIVE",
-  },
-  {
-    document_id: "DOC-CORP-INDIGO",
-    chunk_id: "CHK-CORP-INDIGO",
-    title: "IndiGo (InterGlobe Aviation Limited) Job Scam Advisory",
-    content: "IndiGo does not solicit money for interviews, uniforms, medical checkups, or training. Official correspondence comes solely from @goindigo.in. Candidates should never transfer funds to individual bank accounts or UPI handles.",
-    source: "IndiGo Official Career Advisories",
-    source_type: "COMPANY_CAREERS",
-    source_url: "https://www.goindigo.in/careers",
-    authority_level: "TIER_1_AUTHORITATIVE",
-  },
-  // TIER 2: Threat Intelligence & Scam Patterns
-  {
-    document_id: "DOC-THR-001",
-    chunk_id: "CHK-THR-001",
-    title: "Task-Based & Fake Certificate Recruitment Scam Syndicate Pattern",
-    content: "Fraudulent entities impersonate recognized IT brands or registered startups to offer remote internships. They issue authentic-looking appointment letters, assign trivial tasks (form-filling, social media follows), and subsequently demand payment for certificate generation, registration fees, or training portals.",
-    source: "Cyber Intelligence Threat Feed",
-    source_type: "SECURITY_DATABASE",
-    authority_level: "TIER_2_HIGH_QUALITY",
-  },
-  {
-    document_id: "DOC-THR-002",
-    chunk_id: "CHK-THR-002",
-    title: "Lookalike Corporate Domain Impersonation Tactics",
-    content: "Adversaries register typo-squatted domains (e.g. company-careers.com, company-portal.in) with valid SSL certificates to send fake offer letters. Verification requires checking domain registration age on ICANN RDAP and matching MX records to official corporate nameservers.",
-    source: "DNS & Domain Security Research",
-    source_type: "SECURITY_DATABASE",
-    authority_level: "TIER_2_HIGH_QUALITY",
+export interface DocumentRAGChunk {
+  chunk_id: string; // [Doc-P{page}-C{index}]
+  page: number;
+  text: string;
+  source_type: 'DOCUMENT_TEXT' | 'DOCUMENT_OCR' | 'DOCUMENT_VISUAL';
+  relevance_score?: number;
+}
+
+export interface ExternalEvidenceRAGChunk {
+  chunk_id: string; // [Ext-{source}-{id}]
+  source: string;
+  source_type: string;
+  url?: string;
+  authority_tier: number; // 1 (Official) to 5 (Unverified)
+  claim: string;
+  evidence_text: string;
+  retrieved_at: string;
+  claim_state: 'VERIFIED_EXTERNALLY' | 'OBSERVED_BY_AI' | 'CONTRADICTED' | 'UNVERIFIED' | 'UNAVAILABLE';
+  relevance_score?: number;
+}
+
+export interface DualRAGStore {
+  scanId: string;
+  documentChunks: DocumentRAGChunk[];
+  externalChunks: ExternalEvidenceRAGChunk[];
+}
+
+// In-memory dual RAG stores indexed by scanId
+const SCAN_RAG_REGISTRY = new Map<string, DualRAGStore>();
+
+/**
+ * Indexes chunks from the uploaded document into DOCUMENT_RAG
+ */
+export function indexDocumentChunks(
+  scanId: string,
+  rawText: string,
+  pages?: { page: number; text: string }[]
+): DocumentRAGChunk[] {
+  const store = getOrCreateStore(scanId);
+  store.documentChunks = [];
+
+  if (pages && pages.length > 0) {
+    for (const p of pages) {
+      const paragraphs = p.text.split(/\n{2,}/).map(t => t.trim()).filter(t => t.length > 20);
+      paragraphs.forEach((para, idx) => {
+        store.documentChunks.push({
+          chunk_id: `Doc-P${p.page}-C${idx}`,
+          page: p.page,
+          text: para,
+          source_type: 'DOCUMENT_TEXT',
+        });
+      });
+    }
+  } else {
+    // Single page / linear text chunking
+    const paragraphs = rawText.split(/\n{2,}/).map(t => t.trim()).filter(t => t.length > 20);
+    if (paragraphs.length === 0 && rawText.trim().length > 0) {
+      paragraphs.push(rawText.trim());
+    }
+    paragraphs.forEach((para, idx) => {
+      store.documentChunks.push({
+        chunk_id: `Doc-P1-C${idx}`,
+        page: 1,
+        text: para,
+        source_type: 'DOCUMENT_TEXT',
+      });
+    });
   }
-];
 
+  return store.documentChunks;
+}
+
+/**
+ * Indexes normalized external intelligence into EXTERNAL_EVIDENCE_RAG
+ */
+export function indexExternalEvidence(
+  scanId: string,
+  evidenceItems: EvidenceItem[]
+): ExternalEvidenceRAGChunk[] {
+  const store = getOrCreateStore(scanId);
+  store.externalChunks = [];
+
+  evidenceItems.forEach((item, idx) => {
+    const src = (item.source_name || item.category || 'EXT').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const chunkId = `Ext-${src}-${String(idx + 1).padStart(2, '0')}`;
+    
+    let tier = 3;
+    if (item.category === 'COMPANY' || item.category === 'REGISTRY') tier = 1;
+    else if (item.category === 'DOMAIN' || item.category === 'THREAT') tier = 2;
+    else if (item.category === 'EMAIL' || item.category === 'PUBLIC_REPORT') tier = 4;
+
+    store.externalChunks.push({
+      chunk_id: chunkId,
+      source: item.source_name || 'External Investigation',
+      source_type: item.category || 'EXTERNAL',
+      url: item.source_url || (item as any).url,
+      authority_tier: tier,
+      claim: item.title || '',
+      evidence_text: item.evidence_text || item.snippet || '',
+      retrieved_at: (item as any).retrieved_at || item.collected_at || new Date().toISOString(),
+      claim_state: item.verified ? 'VERIFIED_EXTERNALLY' : 'UNVERIFIED',
+    });
+  });
+
+  return store.externalChunks;
+}
+
+/**
+ * Dual RAG Retrieval: Retrieves relevant chunks from both Document RAG and External RAG
+ */
+export function retrieveDualRAG(
+  scanId: string,
+  query: string
+): {
+  documentCitations: DocumentRAGChunk[];
+  externalCitations: ExternalEvidenceRAGChunk[];
+  formattedContext: string;
+} {
+  const store = getOrCreateStore(scanId);
+  const qTerms = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+  // 1. Search Document RAG
+  const docMatches = store.documentChunks.map(chunk => {
+    let matches = 0;
+    const lower = chunk.text.toLowerCase();
+    for (const term of qTerms) {
+      if (lower.includes(term)) matches++;
+    }
+    return { ...chunk, relevance_score: matches };
+  })
+  .filter(c => (c.relevance_score || 0) > 0)
+  .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0))
+  .slice(0, 4);
+
+  // 2. Search External Evidence RAG
+  const extMatches = store.externalChunks.map(chunk => {
+    let matches = 0;
+    const lower = `${chunk.claim} ${chunk.evidence_text} ${chunk.source}`.toLowerCase();
+    for (const term of qTerms) {
+      if (lower.includes(term)) matches++;
+    }
+    return { ...chunk, relevance_score: matches };
+  })
+  .filter(c => (c.relevance_score || 0) > 0)
+  .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0))
+  .slice(0, 4);
+
+  // 3. Construct clean dual citations block
+  const docLines = docMatches.map(d => `[${d.chunk_id}] (Page ${d.page}): "${d.text.slice(0, 200)}..."`);
+  const extLines = extMatches.map(e => `[${e.chunk_id}] (Source: ${e.source}, State: ${e.claim_state}): ${e.claim} — ${e.evidence_text.slice(0, 200)}...`);
+
+  let formatted = '';
+  if (docLines.length > 0) {
+    formatted += `### Document Evidence Citations (DOCUMENT_RAG):\n${docLines.join('\n')}\n\n`;
+  }
+  if (extLines.length > 0) {
+    formatted += `### External Authoritative Citations (EXTERNAL_EVIDENCE_RAG):\n${extLines.join('\n')}`;
+  }
+
+  return {
+    documentCitations: docMatches,
+    externalCitations: extMatches,
+    formattedContext: formatted.trim(),
+  };
+}
+
+function getOrCreateStore(scanId: string): DualRAGStore {
+  const existing = SCAN_RAG_REGISTRY.get(scanId);
+  if (existing) return existing;
+  const created: DualRAGStore = {
+    scanId,
+    documentChunks: [],
+    externalChunks: [],
+  };
+  SCAN_RAG_REGISTRY.set(scanId, created);
+  return created;
+}
+
+// Backward-compatible adapter for existing calls
 export function retrieveRAGKnowledge(query: {
   entityName?: string;
   domain?: string;
   email?: string;
   hasFeeDemand?: boolean;
   contextText?: string;
+  scanId?: string;
 }): { chunks: RAGKnowledgeChunk[]; summary: string } {
-  const qStr = `${query.entityName || ''} ${query.domain || ''} ${query.email || ''} ${query.contextText || ''}`.toLowerCase();
-  const matched: (RAGKnowledgeChunk & { score: number })[] = [];
+  const scanId = query.scanId || 'default-scan';
+  const qStr = `${query.entityName || ''} ${query.domain || ''} ${query.email || ''} ${query.contextText || ''}`.trim();
+  const dual = retrieveDualRAG(scanId, qStr || 'internship job offer verification');
 
-  for (const chunk of KNOWLEDGE_STORE) {
-    let score = 0;
-    const chunkText = `${chunk.title} ${chunk.content}`.toLowerCase();
+  const chunks: RAGKnowledgeChunk[] = [];
+  dual.documentCitations.forEach(d => {
+    chunks.push({
+      document_id: d.chunk_id,
+      chunk_id: d.chunk_id,
+      title: `Document Page ${d.page}`,
+      content: d.text,
+      source: 'Uploaded Offer Document',
+      source_type: 'DOCUMENT_UPLOAD',
+      authority_level: 'TIER_2_HIGH_QUALITY',
+    });
+  });
+  dual.externalCitations.forEach(e => {
+    chunks.push({
+      document_id: e.chunk_id,
+      chunk_id: e.chunk_id,
+      title: e.claim,
+      content: e.evidence_text,
+      source: e.source,
+      source_type: e.source_type,
+      authority_level: e.authority_tier === 1 ? 'TIER_1_AUTHORITATIVE' : 'TIER_2_HIGH_QUALITY',
+    });
+  });
 
-    if (query.entityName && (chunkText.includes(query.entityName.toLowerCase()) || query.entityName.toLowerCase().includes(chunk.title.toLowerCase()))) {
-      score += 50;
-    }
-    if (query.hasFeeDemand && (chunk.chunk_id.includes('REG-001') || chunk.chunk_id.includes('REG-003') || chunk.chunk_id.includes('THR-001'))) {
-      score += 40;
-    }
-    if (query.email && (query.email.includes('gmail') || query.email.includes('yahoo')) && chunk.content.includes('@gmail')) {
-      score += 30;
-    }
-    if (score > 0) {
-      matched.push({
-        ...chunk,
-        score,
-        match_score: Math.min(100, score),
-        match_method: "KEYWORD_RULE",
-      });
-    }
-  }
-
-  // If no specific company rule matched, include standard regulatory & anti-fraud baselines
-  if (matched.length === 0) {
-    matched.push(
-      { ...KNOWLEDGE_STORE[0], score: 30, match_score: 30, match_method: "KEYWORD_RULE" },
-      { ...KNOWLEDGE_STORE[1], score: 25, match_score: 25, match_method: "KEYWORD_RULE" },
-      { ...KNOWLEDGE_STORE[6], score: 20, match_score: 20, match_method: "KEYWORD_RULE" }
-    );
-  }
-
-  matched.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
-  const topChunks = matched.slice(0, 4);
-
-  const summary = topChunks.map((c, i) => `[RAG-${i + 1}] (${c.authority_level}) [${c.match_method || 'KEYWORD_RULE'}: ${c.match_score || 0}%] ${c.title}: ${c.content}`).join('\n\n');
-
-  return { chunks: topChunks, summary };
+  return {
+    chunks,
+    summary: dual.formattedContext || 'No matching document or external evidence chunks retrieved.',
+  };
 }

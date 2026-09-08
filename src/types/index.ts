@@ -1,12 +1,47 @@
+export type VisualSignatureType =
+  | 'VISUAL_SIGNATURE'      // Something that looks like a signature (visual analysis only)
+  | 'HANDWRITTEN_SIGNATURE'  // Appears handwritten (visual analysis only)
+  | 'PRINTED_SIGNATURE'      // Printed name in signature position
+  | 'STAMP'                  // Rubber stamp or similar
+  | 'CRYPTOGRAPHIC_SIGNATURE' // ONLY when PDF digital signature metadata validates
+  | 'ABSENT';                // No signature detected
+
+export type SignatoryVerificationState =
+  | 'NO_SIGNATURE_DETECTED'
+  | 'SIGNATURE_PRESENT_UNIDENTIFIED'
+  | 'SIGNATORY_OBSERVED'
+  | 'SIGNATORY_CORROBORATED'
+  | 'SIGNATORY_VERIFIED'
+  | 'SIGNATORY_CONTRADICTED';
+
+export type VisualRegionType =
+  | 'SIGNATURE' | 'STAMP' | 'SEAL' | 'LOGO' | 'LETTERHEAD'
+  | 'QR_CODE' | 'PHOTO' | 'TABLE' | 'HANDWRITING'
+  | 'DIGITAL_SIGNATURE' | 'SIGNATORY_BLOCK';
+
+export interface VisualRegion {
+  type: VisualRegionType;
+  page: number;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+  confidence: number;
+  nearbyText?: string;
+  evidenceId: string;
+  detectionMethod: 'GEMINI_VISION' | 'OCR_LAYOUT' | 'TEXT_PATTERN';
+}
+
 export interface VisualForensicsData {
   signature_detected: boolean;
-  signature_type: "DIGITAL_STAMP" | "HANDWRITTEN_IMAGE" | "PRINTED_NAME" | "ABSENT" | "SUSPICIOUS";
+  signature_type: VisualSignatureType;
   signatory_name?: string;
   signatory_title?: string;
+  signatory_department?: string;
+  signatory_state: SignatoryVerificationState;
   official_seal_detected: boolean;
   letterhead_logo_detected: boolean;
-  font_consistency_score: number; // 0 - 100
+  font_consistency_score: number;
   formatting_anomalies: string[];
+  visual_regions: VisualRegion[];
+  evidence_ids: string[];
 }
 
 export interface DocumentClaim {
@@ -244,6 +279,37 @@ export interface CertificateVerificationData {
   evidence: EvidenceItem[];
 }
 
+export interface ScoreTraceConstraint {
+  constraint: string;
+  ceiling: number;
+  reason: string;
+  applied: boolean;
+}
+
+export interface ScoreTraceDimension {
+  dimension: string;
+  name: string;
+  weight: number;
+  normalized_weight: number;
+  active: boolean;
+  status: 'VERIFIED' | 'UNVERIFIED' | 'SUSPICIOUS' | 'CONTRADICTED' | 'FLAGGED';
+  score: number;
+  weighted_contribution: number;
+  evidence_ids: string[];
+  reason: string;
+}
+
+export interface ScoreTrace {
+  pre_constraint_score: number;
+  active_weight_sum: number;
+  dimensions: ScoreTraceDimension[];
+  rule_impact: number;
+  constraints_triggered: ScoreTraceConstraint[];
+  final_score: number;
+  verdict: string;
+  formula: string;
+}
+
 export interface ScoreComponent {
   name: string;
   weight: number;
@@ -252,6 +318,9 @@ export interface ScoreComponent {
   confidence: number; // 0 - 100
   reason: string;
   evidence_count: number;
+  active?: boolean;
+  status?: 'VERIFIED' | 'UNVERIFIED' | 'SUSPICIOUS' | 'CONTRADICTED' | 'FLAGGED';
+  evidence_ids?: string[];
 }
 
 export interface DeterministicScoreResult {
@@ -266,6 +335,7 @@ export interface DeterministicScoreResult {
   rules_triggered: RuleEvaluation[];
   hard_caps_applied?: string[];
   scoring_model_version?: string;
+  score_trace?: ScoreTrace;
 }
 
 export interface ScanRecord {
@@ -451,6 +521,87 @@ export interface LegitifyReport {
   ai_synthesis?: any;
   company_record?: any;
   has_fee_demand?: boolean;
+  score_trace?: ScoreTrace;
+  extracted_offer_parts?: ExtractedOfferParts;
+  gemini_cross_examination?: GeminiCrossExaminationReport;
+  gemini_reconciliation?: GeminiReconciliationReport;
+  dual_rag_citations?: DualRAGCitations;
+  signatory_forensics?: {
+    signature_detected: boolean;
+    signature_type: VisualSignatureType;
+    signatory_name?: string;
+    signatory_title?: string;
+    signatory_department?: string;
+    identity_state: SignatoryVerificationState;
+    page?: number;
+    evidence_ids: string[];
+    detection_method?: string;
+  };
+  pipeline_trace?: PipelineTrace;
+}
+
+export interface ExtractedOfferParts {
+  roles: string[];
+  stipends: Array<{
+    rawText: string;
+    amount?: string;
+    currency?: string;
+    period?: 'month' | 'week' | 'year' | 'lump-sum' | 'unknown';
+    plausibility: 'PLAUSIBLE' | 'UNUSUAL' | 'UNVERIFIED' | 'CONTRADICTORY';
+    reason?: string;
+  }>;
+  joiningDates: Array<{
+    rawText: string;
+    parsedDate?: string;
+    urgencyClassification: 'NORMAL' | 'URGENT_24H' | 'URGENT_48H' | 'RETROACTIVE' | 'UNVERIFIED';
+  }>;
+  signatories: Array<{
+    name: string;
+    title?: string;
+    department?: string;
+    isVerifiedCorporateSignatory?: boolean;
+    status: 'VERIFIED' | 'UNVERIFIED' | 'NOT_FOUND' | 'SUSPICIOUS' | 'OBSERVED' | 'CORROBORATED' | 'CONTRADICTED';
+  }>;
+  selectionStatements: string[];
+  logoReferences: string[];
+}
+
+export interface GeminiCrossExaminationReport {
+  engine: 'GEMINI';
+  model: string;
+  status: string;
+  verdict?: string;
+  confidence?: string;
+  summary: string;
+  riskSignals: Array<{ finding: string; confidence?: string; evidenceId: string }>;
+  positiveSignals: Array<{ finding: string; confidence?: string; evidenceId: string }>;
+  sources: Array<{ sourceId: string; title: string; publisher: string; url?: string; authorityTier: number; finding: string }>;
+  unverifiedItems: string[];
+  contradictions: string[];
+  recommendedActions: string[];
+  searchCoverage: {
+    searchPerformed: boolean;
+    queriesAttempted: string[];
+    sourcesExamined: number;
+    authoritativeSourcesFound: number;
+  };
+}
+
+export interface GeminiReconciliationReport {
+  agreements: string[];
+  contradictions: string[];
+  unknowns: string[];
+  finalAssessment: string;
+  pathA_trust_score: number;
+  pathA_verdict: string;
+  gemini_verdict: string;
+  reconciliation_notes: string;
+}
+
+export interface DualRAGCitations {
+  document_citations: Array<{ citation: string; content: string; page?: number; relevance: number }>;
+  external_citations: Array<{ citation: string; source: string; content: string; relevance: number }>;
+  formatted_context: string;
 }
 
 export interface ProviderResult<T = any> {
@@ -464,5 +615,22 @@ export interface ProviderResult<T = any> {
   latency_ms?: number;
   error_code?: string;
   error_message?: string;
+}
+
+export interface PipelineTraceEntry {
+  stage: string;
+  status: 'PASS' | 'FAIL' | 'SKIP' | 'UNAVAILABLE';
+  durationMs: number;
+  detail: string;
+  evidenceIds?: string[];
+  counts?: Record<string, number>;
+}
+
+export interface PipelineTrace {
+  scanId: string;
+  startedAt: string;
+  completedAt?: string;
+  stages: PipelineTraceEntry[];
+  totalDurationMs?: number;
 }
 

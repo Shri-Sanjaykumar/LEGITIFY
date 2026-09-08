@@ -160,10 +160,14 @@ export type ClaimType =
   | 'BANK_ACCOUNT'
   | 'CERTIFICATE_ID'
   | 'SIGNATORY_NAME'
-  | 'SIGNATORY_TITLE';
+  | 'SIGNATORY_TITLE'
+  | 'OFFER_SELECTION_CLAIM'
+  | 'LOGO_IDENTITY_CLAIM'
+  | 'TIMELINE_URGENCY_CLAIM'
+  | 'FORMATTING_ANOMALY';
 
 export interface ClaimVerification {
-  status: 'VERIFIED' | 'PARTIALLY_VERIFIED' | 'CONTRADICTED' | 'UNVERIFIED' | 'NOT_APPLICABLE';
+  status: 'VERIFIED' | 'CORROBORATED' | 'OBSERVED' | 'CONTRADICTED' | 'SUSPICIOUS' | 'UNVERIFIED' | 'NOT_FOUND' | 'NOT_APPLICABLE';
   checks: VerificationCheck[];
   evidenceIds: string[];
   notes?: string;
@@ -239,6 +243,15 @@ export interface EvidenceSource {
   method: 'LIVE_API' | 'LOCAL_RULE' | 'KEYWORD_MATCH' | 'ML_MODEL' | 'LLM_ANALYSIS';
 }
 
+export interface GeminiStructuredDossier {
+  whatLegitifyFound: string[];
+  whatGeminiFound: string[];
+  agreements: string[];
+  contradictions: string[];
+  unknowns: string[];
+  finalAssessment: string;
+}
+
 /**
  * Gemini independent investigation result.
  * Gemini is an independent investigator — NOT a scoring oracle.
@@ -266,6 +279,7 @@ export interface GeminiInvestigationResult {
     reason?: string;
   };
   evidence: GeminiEvidence[];
+  structuredDossier?: GeminiStructuredDossier;
 }
 
 export type GeminiInvestigationStatus =
@@ -304,6 +318,9 @@ export interface GeminiEvidence {
   strength: number;
   finding: string;
   isUniqueToGemini: boolean;  // true if LEGITIFY did NOT find same fact
+  claim_state?: 'OBSERVED_BY_AI';
+  source_tier?: 3;
+  source_reliability?: number;
 }
 
 /**
@@ -402,7 +419,9 @@ export type PublicSourceType =
   | 'NEWS'
   | 'BLOG'
   | 'SEARCH_RESULT'
-  | 'OFFICIAL_ADVISORY';
+  | 'OFFICIAL_ADVISORY'
+  | 'LINKEDIN_PUBLIC'
+  | 'PROFESSIONAL_PLATFORM';
 
 export type PublicExperienceType =
   | 'PAYMENT_SCAM_REPORT'
@@ -415,6 +434,9 @@ export type PublicExperienceType =
   | 'INTERVIEW_COMPLAINT'
   | 'POSITIVE_EXPERIENCE'
   | 'OFFICIAL_WARNING'
+  | 'UNVERIFIED_USER_REPORT'
+  | 'CORROBORATED_USER_REPORT'
+  | 'OBSERVED_CLUSTER'
   | 'UNCERTAIN';
 
 export type PublicSourceStatus =

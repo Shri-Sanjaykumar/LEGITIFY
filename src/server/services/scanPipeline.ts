@@ -5,7 +5,18 @@
 // ML -> Gemini Independent Path -> Evidence Fusion -> Scoring -> AI -> Report
 // ==============================================================================
 import crypto from 'crypto';
-import { LegitifyReport, ScanEntityType, EvidenceItem } from '../../types';
+import {
+  LegitifyReport,
+  ScanEntityType,
+  EvidenceItem,
+  ExtractedOfferParts,
+  GeminiCrossExaminationReport,
+  GeminiReconciliationReport,
+  DualRAGCitations,
+  PipelineTrace,
+  PipelineTraceEntry,
+} from '../../types';
+import { detectVisualRegions, VisualForensicResult } from './visualForensicsService';
 import { supabaseAdmin } from '../../lib/supabase/server';
 import { logAuditEvent } from './auditService';
 import { lookupCompany, CompanyData } from './companyService';
@@ -26,12 +37,14 @@ import { compileFullReport, persistReport } from './reportService';
 import { runWebIntelligence } from './webIntelligenceService';
 import { detectEvidenceConflicts, formatContradictionsForReport } from './conflictService';
 import { normalizeCompanyName, normalizeDomain, extractEmailDomain } from '../utils/normalizer';
-import { retrieveRAGKnowledge } from './ragService';
+import { indexDocumentChunks, indexExternalEvidence, retrieveDualRAG, retrieveRAGKnowledge } from './ragService';
 import { chunkDocument } from './chunkingService';
 import { buildClaimLedger } from './claimLedger';
 import { runCybersecurityAnalysis } from './cybersecurityService';
 import { runGeminiInvestigation } from './geminiInvestigator';
 import { runEvidenceFusion } from './evidenceFusionEngine';
+import { generateClaimInvestigationQueue } from './huggingfaceService';
+import { runReportAssertionGuard } from './reportAssertionGuard';
 
 export interface ExecuteScanParams {
   userId: string;
@@ -98,8 +111,27 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
   });
 
   const evidence: EvidenceItem[] = [];
+  const traceStages: PipelineTraceEntry[] = [];
+  const recordTrace = (
+    stage: string,
+    status: 'PASS' | 'FAIL' | 'SKIP' | 'UNAVAILABLE',
+    startMs: number,
+    detail: string,
+    evidenceIds?: string[],
+    counts?: Record<string, number>
+  ) => {
+    traceStages.push({
+      stage,
+      status,
+      durationMs: Date.now() - startMs,
+      detail,
+      evidenceIds,
+      counts,
+    });
+  };
 
   // Step 2: Document Extraction & Text Signal Extraction
+  const docStart = Date.now();
   let docResult: DocumentExtractionResult | undefined;
   const combinedTextCorpus = [contextText, entityValue].filter(Boolean).join('\n').trim();
 
@@ -111,17 +143,112 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
       docResult.has_fee_demand = docResult.has_fee_demand || pasted.has_fee_demand;
       (docResult as any).suspicious_patterns = [...(docResult.suspicious_patterns || []), ...(pasted.suspicious_patterns || [])];
     }
+    recordTrace(
+      'Document Decomposition & OCR',
+      'PASS',
+      docStart,
+      `Engine: ${docResult.normalized_evidence?.ocr_engine || 'Standard'}, Text: ${docResult.extracted_text?.length || 0} chars`,
+      docResult.evidence?.map(e => e.id).filter(Boolean) as string[],
+      { textLength: docResult.extracted_text?.length || 0 }
+    );
   } else {
     const textBuffer = Buffer.from(combinedTextCorpus || entityValue, 'utf-8');
     docResult = await processDocument(textBuffer, 'pasted_text.txt', 'text/plain');
+    recordTrace(
+      'Document Decomposition & OCR',
+      'PASS',
+      docStart,
+      `Pasted Text mode, length: ${docResult.extracted_text?.length || 0} chars`,
+      docResult.evidence?.map(e => e.id).filter(Boolean) as string[]
+    );
   }
   evidence.push(...(docResult.evidence || []));
 
+  // Step 2.5: Visual Forensics Analysis (Independent from OCR)
+  const visualStart = Date.now();
+  let visualForensicsResult: VisualForensicResult | undefined;
+  if (fileBuffer && mimeType) {
+    try {
+      visualForensicsResult = await detectVisualRegions(fileBuffer, mimeType, scanId, docResult?.extracted_text);
+      if (visualForensicsResult.evidence && visualForensicsResult.evidence.length > 0) {
+        evidence.push(...visualForensicsResult.evidence);
+      }
+      recordTrace(
+        'Visual Forensics',
+        'PASS',
+        visualStart,
+        `Detected ${visualForensicsResult.regions.length} visual regions. Signature: ${visualForensicsResult.signatureType}, State: ${visualForensicsResult.signatoryState}`,
+        visualForensicsResult.evidence.map(e => e.id).filter(Boolean) as string[],
+        { regionsCount: visualForensicsResult.regions.length }
+      );
+    } catch (err: any) {
+      recordTrace('Visual Forensics', 'UNAVAILABLE', visualStart, `Visual forensics degraded: ${err.message}`);
+    }
+  } else {
+    recordTrace('Visual Forensics', 'SKIP', visualStart, 'Pasted text input (no visual file buffer)');
+  }
+
   const fullTextToAnalyze = [contextText, docResult?.extracted_text, entityValue].filter(Boolean).join('\n').trim();
 
-  // Step 2.5: Semantic Document Chunking & Structured Claim Ledger
+  // Stage 02 & 03: Semantic Document Chunking & Structured Claim Ledger
   const chunks = chunkDocument(fullTextToAnalyze, scanId);
   const claimLedger = buildClaimLedger(chunks);
+
+  // Stage 04: Structured Offer-Part Extraction (Roles, Compensation, Joining, Signatory, Selection, Logo)
+  const signatoriesExtracted = (claimLedger.normalizedEntities.signatories || []).map(sig => ({
+    name: sig.name || sig.raw,
+    title: sig.title,
+    status: (sig.name ? 'OBSERVED' : 'UNVERIFIED') as any,
+  }));
+
+  // Merge visual forensics signatory if detected
+  if (visualForensicsResult && visualForensicsResult.signatureType !== 'ABSENT') {
+    const visualSigName = visualForensicsResult.signatoryName;
+    if (visualSigName) {
+      const existing = signatoriesExtracted.find(s => s.name && s.name.toLowerCase().includes(visualSigName.toLowerCase()));
+      if (!existing) {
+        signatoriesExtracted.push({
+          name: visualSigName,
+          title: visualForensicsResult.signatoryTitle,
+          status: visualForensicsResult.signatoryState as any,
+        });
+      } else {
+        existing.status = visualForensicsResult.signatoryState as any;
+        if (!existing.title && visualForensicsResult.signatoryTitle) {
+          existing.title = visualForensicsResult.signatoryTitle;
+        }
+      }
+    } else {
+      signatoriesExtracted.push({
+        name: 'Visual Signature Mark',
+        title: 'Signatory Block (Name unextracted)',
+        status: 'UNVERIFIED',
+      });
+    }
+  }
+
+  const extractedOfferParts: ExtractedOfferParts = {
+    roles: Array.from(claimLedger.normalizedEntities.jobRoles || []),
+    stipends: (claimLedger.normalizedEntities.stipends || []).map(s => ({
+      rawText: s.raw,
+      amount: s.amount ? String(s.amount) : undefined,
+      currency: s.currency,
+      period: s.period?.toLowerCase() as any,
+      plausibility: s.plausibility as any,
+      reason: (s as any).reason,
+    })),
+    joiningDates: (claimLedger.normalizedEntities.joiningDates || []).map(j => ({
+      rawText: j.raw,
+      parsedDate: j.date,
+      urgencyClassification: j.isUrgent ? 'URGENT_24H' : 'NORMAL',
+    })),
+    signatories: signatoriesExtracted,
+    selectionStatements: Array.from(claimLedger.normalizedEntities.selectionStatements || []),
+    logoReferences: Array.from(claimLedger.normalizedEntities.logoReferences || []),
+  };
+
+  // Stage 06: Dual RAG Layer 1: Index Document Chunks into DOCUMENT_RAG
+  indexDocumentChunks(scanId, fullTextToAnalyze, (docResult as any)?.pages);
 
   // Step 3: Entity Normalization & Routing
   let targetCompany = '';
@@ -185,6 +312,18 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     evidence.push(...cyberResult.evidence);
   }
 
+  // Step 4.8: Dynamic Claim-Driven Investigation Queue (No hardcoded generic lists)
+  const claimInvestigationQueue = generateClaimInvestigationQueue(claimLedger.claims, {
+    companyName: targetCompany,
+    domain: targetDomain,
+    recruiterEmail: targetEmail,
+    recruiterName: (claimLedger.normalizedEntities as any).signatories?.[0]?.name,
+    role: (claimLedger.normalizedEntities as any).jobRoles?.[0],
+    stipend: (claimLedger.normalizedEntities as any).stipends?.[0]?.raw,
+    upiId: claimLedger.normalizedEntities.upiIds[0],
+    paymentAmount: claimLedger.normalizedEntities.paymentRequests[0]?.amount ? String(claimLedger.normalizedEntities.paymentRequests[0].amount) : undefined,
+  });
+
   // Step 5: Concurrent Multi-Source Evidence Lookups
   const [compResult, mcaResult, domResult, threatResult, communityResult, webResult, publicExpResult] = await Promise.all([
     targetCompany ? lookupCompany(targetCompany, targetDomain, targetCin).catch(() => null) : Promise.resolve(null),
@@ -200,6 +339,7 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
       phone: claimLedger.normalizedEntities.phones[0],
       upiId: claimLedger.normalizedEntities.upiIds[0],
       role: (claimLedger.normalizedEntities as any).jobRoles?.[0],
+      customClaimQueries: claimInvestigationQueue.allQueries,
     }).catch(() => null),
   ]);
 
@@ -233,30 +373,90 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     evidence.push(...webResult.evidence);
   }
 
-  // Step 5.5: RAG Dynamic Knowledge Retrieval
+  if (publicExpResult && publicExpResult.sources && publicExpResult.sources.length > 0) {
+    for (const src of publicExpResult.sources) {
+      evidence.push({
+        id: src.id || src.evidenceId || `EXT-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        category: src.sourceType === 'OFFICIAL_ADVISORY' ? 'REGISTRY' : 'PUBLIC_REPORT',
+        evidence_type: src.sourceType,
+        source_name: src.publisher || (src.sourceType === 'REDDIT_THREAD' ? 'Reddit Discussion' : src.sourceType === 'OFFICIAL_ADVISORY' ? 'Official Corporate Advisory' : 'Public Web Intelligence'),
+        source_url: src.url,
+        title: src.title,
+        snippet: src.evidenceText,
+        evidence_text: src.evidenceText,
+        claim: src.matchRationale || src.title,
+        evidence_strength: src.credibility === 'HIGH' ? 'STRONG' : src.credibility === 'MEDIUM' ? 'MEDIUM' : 'WEAK',
+        status: src.experienceType.includes('SCAM') || src.experienceType.includes('WARNING') ? 'WARNING' : src.experienceType === 'POSITIVE_EXPERIENCE' ? 'VERIFIED' : 'UNKNOWN',
+        severity: src.experienceType === 'OFFICIAL_WARNING' || src.experienceType === 'PAYMENT_SCAM_REPORT' ? 'CRITICAL' : src.experienceType.includes('SCAM') ? 'HIGH' : 'INFO',
+        verified: src.status === 'VERIFIED',
+        confidence: Math.round((src.relevance || 0.7) * 100),
+        collected_at: src.retrievedAt || src.publishedAt || new Date().toISOString(),
+        supporting_data: {
+          recency: src.recency,
+          experienceType: src.experienceType,
+          matchedEntities: src.matchedEntities,
+          publisher: src.publisher,
+          sourceTier: src.sourceTier,
+        },
+      });
+    }
+  }
+
+  const hasPaymentDemand = docResult?.has_fee_demand || claimLedger.normalizedEntities.paymentRequests.length > 0;
+
+  // Step 5.5: Dual RAG Layer 2: Index External Evidence into EXTERNAL_EVIDENCE_RAG
+  indexExternalEvidence(scanId, evidence);
+
+  // Step 6: Supervised Kaggle ML Risk Prediction (Offline & Real)
+  const mlPrediction: MLPrediction = predictJobOfferRisk({
+    text: fullTextToAnalyze || entityValue,
+    hasCompanyProfile: !!companyData?.legal_name,
+    hasCompanyLogo: !domainData?.lookalike_detected,
+    telecommuting: fullTextToAnalyze.toLowerCase().includes('remote') || fullTextToAnalyze.toLowerCase().includes('work from home'),
+  });
+
+  // Step 7: Contradiction Engine & Cross-Validation
+  const rawConflicts = detectEvidenceConflicts({
+    companyData,
+    domainData,
+    recruiterData,
+    certificateStatus: certificateData?.status,
+    mlPrediction,
+    threatData,
+    hasFeeDemand: hasPaymentDemand,
+    communityNegativeCount: webResult?.community_complaint_clusters?.length || 0,
+    communityPositiveCount: webResult?.reputable_reviews_found?.length || 0,
+  });
+  const contradictions = formatContradictionsForReport(rawConflicts);
+
+  // Stage 11: Dual RAG Retrieval & Citations Assembly (Document RAG + External Evidence RAG)
+  const dualRAG = retrieveDualRAG(scanId, `${targetCompany} ${targetEmail} ${targetDomain} ${fullTextToAnalyze}`);
+  const dualRAGCitations: DualRAGCitations = {
+    document_citations: dualRAG.documentCitations.map(d => ({
+      citation: d.chunk_id,
+      content: d.text,
+      page: d.page,
+      relevance: d.relevance_score || 1,
+    })),
+    external_citations: dualRAG.externalCitations.map(e => ({
+      citation: e.chunk_id,
+      source: e.source,
+      content: e.evidence_text || e.claim,
+      relevance: e.relevance_score || 1,
+    })),
+    formatted_context: dualRAG.formattedContext,
+  };
+
   const ragResult = retrieveRAGKnowledge({
     entityName: companyData?.legal_name || entityValue,
     domain: domainData?.domain || targetDomain,
     email: targetEmail,
-    hasFeeDemand: docResult?.has_fee_demand || claimLedger.normalizedEntities.paymentRequests.length > 0,
+    hasFeeDemand: hasPaymentDemand,
     contextText: fullTextToAnalyze,
+    scanId,
   });
 
-  // Step 5.6: Gemini Independent Investigation (Path B — separate, independent analysis)
-  const geminiResult = await runGeminiInvestigation({
-    documentText: fullTextToAnalyze,
-    extractedEntities: {
-      companyName: targetCompany || undefined,
-      recruiterEmail: targetEmail || undefined,
-      domain: targetDomain || undefined,
-      phone: claimLedger.normalizedEntities.phones[0] || undefined,
-      cinNumber: targetCin || undefined,
-      paymentRequested: docResult?.has_fee_demand || claimLedger.normalizedEntities.paymentRequests.length > 0,
-      paymentAmount: claimLedger.normalizedEntities.paymentRequests[0]?.amount,
-    },
-  }).catch(() => undefined);
-
-  // Update extracted claims with evidence provenance
+  // Step 10: Update extracted claims with dual RAG evidence provenance
   const claims = (docResult as any)?.extracted_claims || [];
   for (const clm of claims) {
     if (clm.claim_type === 'ORGANIZATION') {
@@ -264,14 +464,14 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
         clm.verification_status = 'VERIFIED';
         clm.retrieved_reality = `Local Reference Index: ${mcaResult.record.legal_name} (CIN: ${mcaResult.record.cin || 'Referenced'})`;
         clm.explanation = 'Organization matches entry in local corporate reference dataset. (Live MCA21 not queried).';
-        clm.evidence_source = '[E-001] Local Corporate Reference Dataset';
-        clm.evidence_ids = ['E-001'];
+        clm.evidence_source = '[Ext-REGISTRY-01] Local Corporate Reference Dataset';
+        clm.evidence_ids = ['Ext-REGISTRY-01'];
       } else {
         clm.verification_status = 'UNVERIFIED';
         clm.retrieved_reality = 'No match in local reference dataset for this entity string';
         clm.explanation = 'Organization not found in local index. (Absence does not imply fraud; live MCA21 query unavailable).';
-        clm.evidence_source = '[E-001] Local Reference Index';
-        clm.evidence_ids = ['E-001'];
+        clm.evidence_source = '[Ext-REGISTRY-01] Local Reference Index';
+        clm.evidence_ids = ['Ext-REGISTRY-01'];
       }
     } else if (clm.claim_type === 'CONTACT_EMAIL') {
       if (recruiterData) {
@@ -279,25 +479,25 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
           clm.verification_status = 'SUSPICIOUS';
           clm.retrieved_reality = `Public Webmail Provider (${targetEmail}) conflicting with enterprise corporate domain`;
           clm.explanation = 'Legitimate enterprise recruiters communicate via corporate domain addresses, not free public webmail.';
-          clm.evidence_source = '[E-003] Recruiter Authentication Engine';
-          clm.evidence_ids = ['E-003'];
+          clm.evidence_source = '[Ext-RECRUITER-01] Recruiter Authentication Engine';
+          clm.evidence_ids = ['Ext-RECRUITER-01'];
         } else if (recruiterData.domain_alignment === 'EXACT_MATCH' || recruiterData.domain_alignment === 'MATCH') {
           clm.verification_status = 'VERIFIED';
           clm.retrieved_reality = 'Sender address matches verified corporate domain';
           clm.explanation = 'Recruiter email domain aligns with claimed corporate domain. (Note: Domain alignment does not independently verify authorization).';
-          clm.evidence_source = '[E-003] Recruiter Authentication Engine';
-          clm.evidence_ids = ['E-003'];
+          clm.evidence_source = '[Ext-RECRUITER-01] Recruiter Authentication Engine';
+          clm.evidence_ids = ['Ext-RECRUITER-01'];
         } else {
           clm.verification_status = 'UNVERIFIED';
           clm.retrieved_reality = `Sender domain '${domainData?.domain || targetDomain}' unverified against official company domain`;
           clm.explanation = 'Recruiter email domain could not be independently linked to the claimed corporate entity.';
-          clm.evidence_source = '[E-003] Recruiter Authentication Engine';
-          clm.evidence_ids = ['E-003'];
+          clm.evidence_source = '[Ext-RECRUITER-01] Recruiter Authentication Engine';
+          clm.evidence_ids = ['Ext-RECRUITER-01'];
         }
       }
     } else if (clm.claim_type === 'PAYMENT_REQUIREMENT') {
-      clm.evidence_source = '[E-004] Offer Document Forensics';
-      clm.evidence_ids = ['E-004'];
+      clm.evidence_source = '[Doc-P1-C0] Offer Document Forensics';
+      clm.evidence_ids = ['Doc-P1-C0'];
     }
   }
 
@@ -328,7 +528,6 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     });
   }
 
-  const hasPaymentDemand = docResult?.has_fee_demand || claimLedger.normalizedEntities.paymentRequests.length > 0;
   if (hasPaymentDemand) {
     falsePositiveCheck.suspicious_evidence.push({
       title: "Upfront Monetary Charge Detected",
@@ -340,15 +539,7 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     falsePositiveCheck.recommendation = "No direct monetary charges identified in document.";
   }
 
-  // Step 6: Supervised Kaggle ML Risk Prediction (Offline & Real)
-  const mlPrediction: MLPrediction = predictJobOfferRisk({
-    text: fullTextToAnalyze || entityValue,
-    hasCompanyProfile: !!companyData?.legal_name,
-    hasCompanyLogo: !domainData?.lookalike_detected,
-    telecommuting: fullTextToAnalyze.toLowerCase().includes('remote') || fullTextToAnalyze.toLowerCase().includes('work from home'),
-  });
-
-  // Step 7: Evidence Completeness Metric
+  // Step 11: Evidence Completeness Metric
   const completeness = calculateEvidenceCompleteness({
     companyData,
     domainData,
@@ -361,7 +552,7 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     evidence,
   });
 
-  // Step 8: Deterministic 10-Dimension Score (LEGITIFY Path A)
+  // Step 12: Deterministic 10-Dimension Score (LEGITIFY Path A with ScoreTrace)
   const legitifyScore = calculateDeterministicScore({
     companyData,
     domainData,
@@ -434,8 +625,116 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     recruiterEmail: targetEmail,
   });
 
-  // Step 8.5: Evidence Fusion Engine (Merges Path A + Path B + Patterns + Public Intelligence)
-  const fusionResult = runEvidenceFusion({
+  // Stage 15: Preliminary Evidence Fusion (Path A Isolation)
+  const preliminaryFusion = runEvidenceFusion({
+    legitifyResult: legitifyScore,
+    legitifyEvidence: evidence,
+    geminiResult: undefined, // Path A baseline before independent cross-examination
+    hasFeeDemand: hasPaymentDemand,
+    hasLookalikeDomain: isLookalike,
+    hasKnownThreat: isMaliciousIOC,
+    companyName: targetCompany,
+    domain: targetDomain,
+    recruiterEmail: targetEmail,
+    publicExperience: publicExpResult || undefined,
+    entityGraph: entityGraph as any,
+    fraudPatterns,
+    legitimatePatterns,
+    counterEvidence,
+    isYoungStartup: domainData?.age_days !== undefined && domainData.age_days < 365,
+  });
+
+  // Stage 16: GEMINI INDEPENDENT CROSS-EXAMINATION (Path B)
+  // Gemini acts as an independent investigator cross-examining Path A with Google Search grounding
+  const geminiResult = await runGeminiInvestigation({
+    documentText: fullTextToAnalyze,
+    extractedEntities: {
+      companyName: targetCompany || undefined,
+      recruiterEmail: targetEmail || undefined,
+      domain: targetDomain || undefined,
+      phone: claimLedger.normalizedEntities.phones[0] || undefined,
+      urls: fullTextToAnalyze.match(/https?:\/\/[^\s<>"{}|\\^\[\]`]+/g) || [],
+      cinNumber: targetCin || undefined,
+      stipend: claimLedger.claims.find(c => c.type === 'STIPEND')?.normalizedValue,
+      paymentRequested: hasPaymentDemand,
+      paymentAmount: claimLedger.normalizedEntities.paymentRequests[0]?.amount,
+      role: (claimLedger.normalizedEntities as any).jobRoles?.[0],
+      joiningDate: (claimLedger.normalizedEntities as any).joiningDates?.[0]?.raw,
+      signatoryName: (claimLedger.normalizedEntities as any).signatories?.[0]?.name,
+      signatoryTitle: (claimLedger.normalizedEntities as any).signatories?.[0]?.title,
+      stipendPlausibility: (claimLedger.normalizedEntities as any).stipends?.[0]?.plausibility,
+      timelineUrgency: (claimLedger.normalizedEntities as any).joiningDates?.[0]?.isUrgent ? 'Urgent onboarding requested' : undefined,
+    },
+    claims: claimLedger.claims,
+    ocrFindings: docResult?.suspicious_patterns,
+    mlEvaluation: {
+      ml_probability: mlPrediction.ml_probability,
+      prediction: mlPrediction.prediction,
+      algorithm: mlPrediction.algorithm,
+      topFeatures: mlPrediction.top_features,
+    },
+    externalEvidence: evidence.map(e => ({
+      source: e.source_name || e.category || 'External',
+      finding: e.title || e.evidence_text || '',
+      category: e.category,
+    })),
+    conflicts: rawConflicts,
+    preliminaryScore: {
+      trustScore: preliminaryFusion.finalTrustScore,
+      verdict: preliminaryFusion.finalVerdict,
+      riskLevel: preliminaryFusion.finalRiskLevel,
+      activeDimensions: legitifyScore.score_trace?.dimensions
+        .filter(d => d.active)
+        .map(d => ({ name: d.name, score: d.score, status: d.status, contrib: d.weighted_contribution })),
+    },
+    dualRAGContext: dualRAGCitations.formatted_context,
+  }).catch(() => undefined);
+
+  // Stage 17: LEGITIFY ↔ GEMINI Reconciliation (Agreements, Contradictions, Unknowns)
+  const geminiReconciliation: GeminiReconciliationReport = {
+    agreements: geminiResult?.structuredDossier?.agreements?.length
+      ? geminiResult.structuredDossier.agreements
+      : (geminiResult?.positiveSignals?.map(s => s.finding) || []),
+    contradictions: geminiResult?.structuredDossier?.contradictions?.length
+      ? geminiResult.structuredDossier.contradictions
+      : (geminiResult?.contradictions || []),
+    unknowns: geminiResult?.structuredDossier?.unknowns?.length
+      ? geminiResult.structuredDossier.unknowns
+      : (geminiResult?.unverifiedItems?.length ? geminiResult.unverifiedItems : ['Signatory employment record could not be confirmed in public registries.']),
+    finalAssessment: geminiResult?.structuredDossier?.finalAssessment || geminiResult?.summary || 'Independent investigation completed.',
+    pathA_trust_score: preliminaryFusion.finalTrustScore,
+    pathA_verdict: preliminaryFusion.finalVerdict,
+    gemini_verdict: geminiResult?.verdict || 'UNAVAILABLE',
+    reconciliation_notes: geminiResult
+      ? `Path A deterministic score (${preliminaryFusion.finalTrustScore}/100, ${preliminaryFusion.finalVerdict}) evaluated alongside Gemini independent cross-examination (${geminiResult.verdict || 'PENDING'}). Hard safety caps strictly enforced by deterministic engine.`
+      : 'Gemini independent cross-examination offline/rate-limited; Path A deterministic evidence governs assessment.',
+  };
+
+  const geminiCrossExamination: GeminiCrossExaminationReport | undefined = geminiResult ? {
+    engine: 'GEMINI',
+    model: geminiResult.geminiModel,
+    status: geminiResult.investigationStatus,
+    verdict: geminiResult.verdict,
+    confidence: geminiResult.confidence,
+    summary: geminiResult.summary,
+    riskSignals: geminiResult.riskSignals,
+    positiveSignals: geminiResult.positiveSignals,
+    sources: geminiResult.sources.map(s => ({
+      sourceId: s.sourceId,
+      title: s.title,
+      publisher: s.publisher,
+      url: s.url,
+      authorityTier: s.authorityTier,
+      finding: s.finding,
+    })),
+    unverifiedItems: geminiResult.unverifiedItems,
+    contradictions: geminiResult.contradictions,
+    recommendedActions: geminiResult.recommendedActions,
+    searchCoverage: geminiResult.searchCoverage,
+  } : undefined;
+
+  // Stage 18: Final Trust Score & Confidence Sealing
+  const finalFusion = geminiResult ? runEvidenceFusion({
     legitifyResult: legitifyScore,
     legitifyEvidence: evidence,
     geminiResult,
@@ -451,36 +750,27 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     legitimatePatterns,
     counterEvidence,
     isYoungStartup: domainData?.age_days !== undefined && domainData.age_days < 365,
-  });
+  }) : preliminaryFusion;
 
   // Final fused score result
   const scoreResult: DeterministicScoreResult = {
     ...legitifyScore,
-    trust_score: fusionResult.finalTrustScore,
-    confidence_score: fusionResult.finalEvidenceConfidence,
-    risk_level: (fusionResult.finalRiskLevel === 'INSUFFICIENT EVIDENCE' ? 'MODERATE' : fusionResult.finalRiskLevel) as any,
-    verdict: (fusionResult.finalVerdict === 'INSUFFICIENT EVIDENCE / REVIEW' ? 'INSUFFICIENT_EVIDENCE' : fusionResult.finalVerdict) as any,
+    trust_score: finalFusion.finalTrustScore,
+    confidence_score: finalFusion.finalEvidenceConfidence,
+    risk_level: (finalFusion.finalRiskLevel === 'INSUFFICIENT EVIDENCE' || finalFusion.finalRiskLevel === 'INSUFFICIENT EVIDENCE / REVIEW' ? 'MODERATE' : finalFusion.finalRiskLevel) as any,
+    verdict: (finalFusion.finalVerdict === 'INSUFFICIENT EVIDENCE / REVIEW' ? 'INSUFFICIENT_EVIDENCE' : finalFusion.finalVerdict) as any,
     hard_caps_applied: [
       ...legitifyScore.hard_caps_applied,
-      ...fusionResult.hardRulesTriggered.map(r => `${r.name}: ${r.effect}`),
+      ...finalFusion.hardRulesTriggered.map(r => `${r.name}: ${r.effect}`),
     ],
+    score_trace: legitifyScore.score_trace ? {
+      ...legitifyScore.score_trace,
+      final_score: finalFusion.finalTrustScore,
+      verdict: (finalFusion.finalVerdict === 'INSUFFICIENT EVIDENCE / REVIEW' ? 'INSUFFICIENT_EVIDENCE' : finalFusion.finalVerdict),
+    } : undefined,
   };
 
-  // Step 9: Contradiction Engine & Cross-Validation
-  const rawConflicts = detectEvidenceConflicts({
-    companyData,
-    domainData,
-    recruiterData,
-    certificateStatus: certificateData?.status,
-    mlPrediction,
-    threatData,
-    hasFeeDemand: hasPaymentDemand,
-    communityNegativeCount: webResult?.community_complaint_clusters?.length || 0,
-    communityPositiveCount: webResult?.reputable_reviews_found?.length || 0,
-  });
-  const contradictions = formatContradictionsForReport(rawConflicts);
-
-  // Step 11: Two-Stage AI Verification Reasoner (Summarizes evidence, does not override score)
+  // Stage 19: 26-Section Hierarchy Report Compilation & Persistence
   const aiProvider = await getActiveAIProvider();
   const aiSynthesis = await aiProvider.generateSynthesis({
     entityName: entityValue,
@@ -497,7 +787,26 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
 
   const processingTimeMs = Date.now() - scanStartTime;
 
-  // Step 12: Compile Full 22-Section Structured Report
+  const pipelineTrace: PipelineTrace = {
+    scanId,
+    startedAt: new Date(scanStartTime).toISOString(),
+    completedAt: new Date().toISOString(),
+    stages: traceStages,
+    totalDurationMs: Date.now() - scanStartTime,
+  };
+
+  const signatoryForensics = visualForensicsResult ? {
+    signature_detected: visualForensicsResult.signatureType !== 'ABSENT',
+    signature_type: visualForensicsResult.signatureType,
+    signatory_name: visualForensicsResult.signatoryName,
+    signatory_title: visualForensicsResult.signatoryTitle,
+    signatory_department: visualForensicsResult.signatoryDepartment,
+    identity_state: visualForensicsResult.signatoryState,
+    page: visualForensicsResult.regions.find(r => r.type === 'SIGNATURE' || r.type === 'SIGNATORY_BLOCK')?.page || 1,
+    evidence_ids: visualForensicsResult.evidence.map(e => e.id).filter(Boolean) as string[],
+    detection_method: visualForensicsResult.detectionMethod,
+  } : undefined;
+
   const finalReport = compileFullReport({
     scanId,
     entityName: entityValue,
@@ -521,12 +830,22 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     fraudPatterns,
     legitimatePatterns,
     counterEvidence,
-    fraudConfidence: fusionResult.fraudConfidence,
-    explanationSummary: fusionResult.explanationSummary,
+    fraudConfidence: finalFusion.fraudConfidence,
+    explanationSummary: finalFusion.explanationSummary,
+    extractedOfferParts,
+    geminiCrossExamination,
+    geminiReconciliation,
+    dualRAGCitations,
+    signatoryForensics,
+    pipelineTrace,
   });
 
-  // Step 13: Persist to Supabase Database
-  await persistReport(scanId, userId, finalReport, evidence, companyData);
+  // Stage 18: REPORT ASSERTION GUARD
+  // Enforces that every factual statement has verifiable evidence or is framed as an honest uncertainty
+  const { guardedReport, guardAudit } = runReportAssertionGuard(finalReport, evidence);
+
+  // Step 13: Persist Guarded Report to Supabase Database
+  await persistReport(scanId, userId, guardedReport, evidence, companyData);
 
   await logAuditEvent({
     user_id: userId,
@@ -536,11 +855,13 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     ip,
     user_agent: userAgent,
     metadata: {
-      trustScore: finalReport.trust_score,
-      verdict: finalReport.verdict,
-      riskLevel: finalReport.risk_level,
+      trustScore: guardedReport.trust_score,
+      verdict: guardedReport.verdict,
+      riskLevel: guardedReport.risk_level,
+      assertionsChecked: guardAudit.totalAssertionsChecked,
+      assertionsSanitized: guardAudit.blockedOrSanitized,
     },
   });
 
-  return finalReport;
+  return guardedReport;
 }

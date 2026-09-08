@@ -4,6 +4,7 @@
 // Live MCA21 statutory API is NOT configured. All results are labeled LOCAL_REFERENCE.
 // Do NOT treat results as live statutory verification.
 // ==============================================================================
+import crypto from 'crypto';
 import { EvidenceItem } from '../../types';
 import { normalizeCompanyName } from '../utils/normalizer';
 
@@ -239,6 +240,7 @@ export async function verifyCompanyRegistry(
 
     if (isCin || isLlpin) {
       evidence.push({
+        id: `EXT-CIN-${crypto.createHash('md5').update(cleanId).digest('hex').substring(0, 6).toUpperCase()}`,
         category: "REGISTRY",
         evidence_type_category: "WEAK_INDICATOR",
         evidence_type: isCin ? "CIN_FORMAT_VALID" : "LLPIN_FORMAT_VALID",
@@ -261,6 +263,7 @@ export async function verifyCompanyRegistry(
       const isBrandName = record.brand_name && record.brand_name.toLowerCase() !== record.legal_name.toLowerCase();
 
       evidence.push({
+        id: `EXT-MCA21-${crypto.createHash('md5').update(record.legal_name).digest('hex').substring(0, 6).toUpperCase()}`,
         category: "REGISTRY",
         evidence_type_category: "WEAK_INDICATOR",
         evidence_type: "LOCAL_REFERENCE_MATCH",
@@ -294,6 +297,7 @@ export async function verifyCompanyRegistry(
 
   // 3. Fallback: Not Found in Local Reference (Important: NOT_FOUND != FRAUD)
   evidence.push({
+    id: `EXT-MCA21-NF-${crypto.createHash('md5').update(query).digest('hex').substring(0, 6).toUpperCase()}`,
     category: "REGISTRY",
     evidence_type_category: "UNVERIFIED",
     evidence_type: "LOCAL_REFERENCE_NOT_FOUND",

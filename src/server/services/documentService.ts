@@ -10,8 +10,24 @@ import path from 'path';
 import os from 'os';
 import { EvidenceItem } from '../../types';
 import { extractTextFromImage, analyzeDocumentDeepForensics } from '../utils/ocr';
+import { extractTextWithPszemrajPdfOcr } from './huggingfaceService';
 
 const execFileAsync = promisify(execFile);
+
+export interface NormalizedDocumentEvidence {
+  raw_ocr?: string;
+  cleaned_text: string;
+  selection_statement?: string;
+  candidate_name?: string;
+  recruiter_name?: string;
+  recruiter_email?: string;
+  company_name?: string;
+  job_role?: string;
+  compensation?: string;
+  joining_date?: string;
+  terms_clauses: string[];
+  ocr_engine?: string;
+}
 
 export interface TriggeredFlag {
   rule: string;
@@ -24,6 +40,9 @@ export interface DocumentExtractionResult {
   filename?: string;
   mime_type?: string;
   extracted_text: string;
+  raw_ocr?: string;
+  ocr_engine?: string;
+  normalized_evidence?: NormalizedDocumentEvidence;
   has_fee_demand: boolean;
   is_confirmed_impersonation?: boolean;
   is_suspicious_offer_letter?: boolean;
@@ -70,15 +89,7 @@ export interface DocumentAnalysisResult extends DocumentExtractionResult {
   extracted_claims?: any[];
 }
 
-const KNOWN_FAKE_COMPANIES = [
-  "Techserv Solutions", "Global IT Academy", "Genius InfoTech", "Nexus Digital India",
-  "ProHire Solutions", "DataMinds Technologies", "CloudNest Innovations", "AlphaEdge IT Solutions",
-  "SkillBridge Infotech", "PrimeTech Global", "Zenith IT Hub", "OmniCore Solutions",
-  "ByteForce Technologies", "DigiCraft Solutions", "VisionX Technologies", "TechPulse India",
-  "NovaTech Services", "InfinityStack Solutions", "CyberNex Technologies", "SwiftCode Academy",
-  "Clinchsoft Technologies", "Clinchsoft", "Apex Global Solutions", "FastTrack Placements"
-];
-
+// Dynamic personal email domains (RFC standard free/public webmail providers)
 const PERSONAL_EMAIL_DOMAINS = new Set([
   "gmail.com", "yahoo.com", "yahoo.in", "outlook.com", "hotmail.com",
   "rediffmail.com", "protonmail.com", "aol.com", "ymail.com",
@@ -150,14 +161,43 @@ const URGENCY_PHRASES = [
   "hurry up", "first come first serve", "last few seats", "offer valid till", "respond today", "do not delay"
 ];
 
-export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
-  // Tier 1: Multimodal Gemini Vision / PDF OCR
+export interface PdfExtractionOutput {
+  text: string;
+  raw_ocr: string;
+  engine: 'PSZEMRAJ_DOCTR' | 'GEMINI_VISION' | 'PDF_PARSE' | 'RAW_BINARY_STREAM' | 'FALLBACK_UTF8';
+}
+
+export async function extractPdfTextWithEngine(
+  buffer: Buffer,
+  filename: string = 'document.pdf'
+): Promise<PdfExtractionOutput> {
+  // Tier 1: Hugging Face Deep Learning OCR (pszemraj/pdf-ocr using Mindee docTR)
+  try {
+    const hfOcr = await extractTextWithPszemrajPdfOcr(buffer, filename);
+    if (hfOcr && hfOcr.text && hfOcr.text.trim().length > 20) {
+      return {
+        text: hfOcr.text.trim(),
+        raw_ocr: hfOcr.raw_ocr,
+        engine: 'PSZEMRAJ_DOCTR',
+      };
+    }
+  } catch (e: any) {
+    console.warn(`[documentService] pszemraj/pdf-ocr fallback notice: ${e.message}`);
+  }
+
+  // Tier 2: Multimodal Gemini Vision / PDF OCR
   try {
     const ocrText = await extractTextFromImage(buffer, 'application/pdf');
-    if (ocrText && ocrText.trim().length > 20) return ocrText.trim();
+    if (ocrText && ocrText.trim().length > 20) {
+      return {
+        text: ocrText.trim(),
+        raw_ocr: ocrText,
+        engine: 'GEMINI_VISION',
+      };
+    }
   } catch {}
 
-  // Tier 2: Dynamic lazy pdf-parse (handles v1 function and v2 PDFParse class)
+  // Tier 3: Dynamic lazy pdf-parse (handles v1 function and v2 PDFParse class)
   try {
     const pdfModule = await import('pdf-parse');
     if ((pdfModule as any).PDFParse) {
@@ -166,18 +206,30 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
       await parser.load();
       const res = await parser.getText();
       const parsedText = res?.pages?.map((p: any) => p.text).join('\n\n') || (typeof res === 'string' ? res : res?.text || '');
-      if (parsedText.trim().length > 20) return parsedText.trim();
+      if (parsedText.trim().length > 20) {
+        return {
+          text: parsedText.trim(),
+          raw_ocr: parsedText,
+          engine: 'PDF_PARSE',
+        };
+      }
     } else {
       const parseFn = (pdfModule as any).default || pdfModule;
       if (typeof parseFn === 'function') {
         const data = await parseFn(buffer);
         const parsed = data?.text?.trim() || '';
-        if (parsed.length > 20) return parsed;
+        if (parsed.length > 20) {
+          return {
+            text: parsed,
+            raw_ocr: parsed,
+            engine: 'PDF_PARSE',
+          };
+        }
       }
     }
   } catch {}
 
-  // Tier 3: Binary text chunks
+  // Tier 4: Binary text chunks
   try {
     const rawStr = buffer.toString('latin1');
     const textChunks: string[] = [];
@@ -189,13 +241,27 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
       if (cleanChunk.length > 1) textChunks.push(cleanChunk);
     }
     if (textChunks.length > 5) {
-      return textChunks.join(' ').replace(/\s+/g, ' ').trim();
+      const res = textChunks.join(' ').replace(/\s+/g, ' ').trim();
+      return {
+        text: res,
+        raw_ocr: rawStr,
+        engine: 'RAW_BINARY_STREAM',
+      };
     }
   } catch {}
 
   const rawStr = buffer.toString('utf-8');
   const printable = rawStr.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim();
-  return printable.length > 20 ? printable : "";
+  return {
+    text: printable.length > 20 ? printable : "",
+    raw_ocr: rawStr,
+    engine: 'FALLBACK_UTF8',
+  };
+}
+
+export async function extractTextFromPdfBuffer(buffer: Buffer, filename: string = 'document.pdf'): Promise<string> {
+  const result = await extractPdfTextWithEngine(buffer, filename);
+  return result.text;
 }
 
 export async function extractTextFromImageBuffer(buffer: Buffer, mimeType: string = 'image/jpeg'): Promise<string> {
@@ -209,7 +275,13 @@ export async function extractTextFromImageBuffer(buffer: Buffer, mimeType: strin
   return printable.length > 20 ? printable : "";
 }
 
-export function extractDocumentSignals(text: string, filename?: string, mimeType?: string): DocumentAnalysisResult {
+export function extractDocumentSignals(
+  text: string,
+  filename?: string,
+  mimeType?: string,
+  rawOcr?: string,
+  ocrEngine?: string
+): DocumentAnalysisResult {
   const textLower = text.toLowerCase();
   const flags: TriggeredFlag[] = [];
   const evidence: EvidenceItem[] = [];
@@ -221,28 +293,19 @@ export function extractDocumentSignals(text: string, filename?: string, mimeType
   const upiMatches = Array.from(new Set(text.match(/[a-zA-Z0-9.\-_]{2,256}@(paytm|upi|ybl|okhdfcbank|okaxis|okicici|oksbi|axl|ibl|barodampay|postbank)/gi) || []));
 
   // --- 1. Company Name Extraction ---
+  // --- 1. Dynamic Company Name Extraction (No hardcoded authority lists) ---
   let detectedCompanyName: string | undefined;
-  for (const fake of KNOWN_FAKE_COMPANIES) {
-    if (textLower.includes(fake.toLowerCase())) {
-      detectedCompanyName = fake;
-      flags.push({
-        rule: "known_fake_company",
-        severity: "critical",
-        message: `Company '${fake}' matches a known fraudulent recruitment entity in our intelligence database.`,
-        score: 1.0,
-      });
-      break;
-    }
+
+  // Pattern A: Explicit letterhead or document header prefixes
+  const prefixMatch = text.match(/(?:Offer\s*Letter\s*(?:from|for|by)|Welcome\s*to|Employment\s*Offer\s*-\s*|Sub:\s*Appointment\s*(?:at|in|with)|Company\s*Name\s*:\s*|Organisation\s*:\s*|Organization\s*:\s*|Employer\s*:\s*)([A-Z0-9][A-Za-z0-9\s&.,'-]{2,50}(?:Pvt\s*Ltd|Private\s*Limited|Limited|Ltd|LLC|Inc|Corp|Technologies|Solutions|Enterprises|Infotech|Services|Global|Aviation|Motors|Consultancy|Systems)?)/i);
+  if (prefixMatch && prefixMatch[1]?.trim()) {
+    detectedCompanyName = prefixMatch[1].trim();
   }
 
+  // Pattern B: Legal entity markers (e.g. Acme Corp Ltd, Tech Solutions Private Limited)
   if (!detectedCompanyName) {
-    const entMatch = text.match(/\b(Tata Consultancy Services|TCS|Tata Motors|Infosys|Wipro|Microsoft|Google|Amazon|Accenture|Cognizant|Capgemini|IndiGo|InterGlobe|Airports Authority of India|AAI|Reliance|HCL Tech|Tech Mahindra|Adobe|IBM|Swiggy|Zomato|Flipkart|Paytm|Deloitte|Clinchsoft Technologies)\b/i);
-    if (entMatch) detectedCompanyName = entMatch[1].trim();
-  }
-
-  if (!detectedCompanyName) {
-    const prefixMatch = text.match(/(?:Offer\s*Letter\s*(?:from|for|by)|Welcome\s*to|Employment\s*Offer\s*-\s*|Sub:\s*Appointment\s*at|Company\s*Name\s*:\s*|Organisation\s*:\s*)([A-Z0-9][A-Za-z0-9\s&.,-]{2,40}(?:Pvt\s*Ltd|Private\s*Limited|Limited|Ltd|LLC|Inc|Corp|Technologies|Solutions|Enterprises|Infotech|Services|Global))/i);
-    if (prefixMatch) detectedCompanyName = prefixMatch[1].trim();
+    const legalMatch = text.match(/\b([A-Z][A-Za-z0-9\s&.,'-]{2,45}\s+(?:Private\s+Limited|Pvt\s+Ltd|Limited|LLP|LLC|Corporation|Corp|Inc|GmbH))\b/i);
+    if (legalMatch) detectedCompanyName = legalMatch[1].trim();
   }
 
   if (!detectedCompanyName) {
@@ -328,14 +391,20 @@ export function extractDocumentSignals(text: string, filename?: string, mimeType
     });
   }
 
-  const hasHRSignatory = /(?:hr\s+manager|human\s+resources|authorized\s+signatory|sincerely|regards)[,\s:]*\n?\s*[A-Z][a-z]+\s+[A-Z][a-z]+/i.test(text);
-  const personCheck = hasHRSignatory ? 1.0 : (text.length > 300 ? 0.0 : 0.5);
-  if (!hasHRSignatory && text.length > 300) {
+  // Signatory text pattern check — ADVISORY ONLY, never a fraud flag.
+  // Full signature forensics is delegated to visualForensicsService.ts
+  // A scammer can insert a signature; absence of a text-detectable signatory is NOT proof of fraud.
+  const signatoryBlockMatch = text.match(
+    /(?:hr\s+manager|human\s+resources|authorized\s+signatory|sincerely|regards|yours\s+(?:faithfully|truly)|head\s+-?\s*hr|director|talent\s+acquisition)[,\s:]*\n?\s*([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?(?:\s+[A-Z][a-z]+)+)/i
+  );
+  const personCheck = signatoryBlockMatch ? 0.7 : (text.length > 300 ? 0.4 : 0.5);
+  if (!signatoryBlockMatch && text.length > 300) {
+    // Info-level advisory — NOT a fraud signal. Visual forensics will determine actual signature state.
     flags.push({
-      rule: "ner_person",
-      severity: "high",
-      message: "No HR contact person name identified. Legitimate letters include HR signatory details.",
-      score: 0.0,
+      rule: "doc_signatory_advisory",
+      severity: "info",
+      message: "No signatory block detected in text layer. Visual forensics analysis will determine actual signature presence. Absence of text-detectable signatory is not indicative of fraud.",
+      score: 0.4,
     });
   }
 
@@ -554,10 +623,39 @@ export function extractDocumentSignals(text: string, filename?: string, mimeType
     });
   }
 
+  // Construct Normalized Document Evidence
+  const selectionMatch = text.match(/(?:We are pleased to (?:offer|inform|extend)|Congratulations(?:!|,)? (?:You have been selected|on your selection)|offer of appointment|selected for the position of|offer of internship|pleased to offer you)[^\n.]{0,160}/i);
+  const candidateMatch = text.match(/(?:Dear|To,?\s*Candidate|Candidate Name\s*:|Name\s*:|Mr\.|Ms\.|Shri)\s*([A-Z][a-zA-Z\s.]{2,40})/i);
+  const normRoleMatch = text.match(/(?:position of|role of|as an?|designation\s*:)\s*([A-Z][A-Za-z0-9\s-]{2,40}(?:Intern|Trainee|Engineer|Developer|Analyst|Associate|Designer|Manager)?)/i);
+  const joiningMatch = text.match(/(?:joining date|date of joining|commencing from|start date|report on)\s*(?:is|:)?\s*([0-9]{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+[0-9]{4}|[0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})/i);
+
+  const matchedClauses: string[] = [];
+  for (const [pattern, _boost, desc] of GENUINE_INDICATORS) {
+    if (pattern.test(textLower)) matchedClauses.push(desc);
+  }
+
+  const normalizedEvidence: NormalizedDocumentEvidence = {
+    raw_ocr: rawOcr || text,
+    cleaned_text: text,
+    selection_statement: selectionMatch ? selectionMatch[0].trim() : undefined,
+    candidate_name: candidateMatch ? candidateMatch[1].trim() : undefined,
+    recruiter_name: text.match(/(?:Authorized Signatory|HR Manager|Head of Talent|HR Director|Recruiter|Regards,?\s*\n)\s*([A-Z][a-zA-Z\s.]{2,40})/i)?.[1]?.trim(),
+    recruiter_email: emails[0],
+    company_name: detectedCompanyName,
+    job_role: normRoleMatch ? normRoleMatch[1].trim() : (roleMatch ? roleMatch[1].trim() : undefined),
+    compensation: stipendMatch ? stipendMatch[0].trim() : undefined,
+    joining_date: joiningMatch ? joiningMatch[1].trim() : undefined,
+    terms_clauses: matchedClauses,
+    ocr_engine: ocrEngine || 'PSZEMRAJ_DOCTR',
+  };
+
   return {
     filename,
     mime_type: mimeType,
     extracted_text: text,
+    raw_ocr: rawOcr || text,
+    ocr_engine: ocrEngine || 'PSZEMRAJ_DOCTR',
+    normalized_evidence: normalizedEvidence,
     extracted_claims,
     sanitized_evidence_block: text.slice(0, 1000),
     has_fee_demand: isFeeDemand,
@@ -607,35 +705,64 @@ export async function processDocument(
   mimeType: string = "text/plain"
 ): Promise<DocumentExtractionResult> {
   let text = "";
+  let rawOcrText: string | undefined = undefined;
+  let ocrEngineUsed: string = 'PLAIN_TEXT';
   let visualForensics: any = undefined;
 
   const isPdf = mimeType === 'application/pdf' || filename.toLowerCase().endsWith('.pdf') || (fileBuffer.length > 4 && fileBuffer.toString('utf-8', 0, 4) === '%PDF');
   const isImage = mimeType.startsWith('image/') || !!filename.match(/\.(png|jpe?g|webp|bmp|gif)$/i);
 
-  if (isPdf || isImage) {
+  if (isPdf) {
+    // Tier 1: Hugging Face Deep-Learning OCR (pszemraj/pdf-ocr) with robust multi-tier fallback
     try {
-      const deepResult = await analyzeDocumentDeepForensics(fileBuffer, isPdf ? 'application/pdf' : mimeType);
+      const extraction = await extractPdfTextWithEngine(fileBuffer, filename);
+      if (extraction && extraction.text && extraction.text.trim().length > 20) {
+        text = extraction.text;
+        rawOcrText = extraction.raw_ocr;
+        ocrEngineUsed = extraction.engine;
+      }
+    } catch (e: any) {
+      console.warn(`[analyzeDocumentFile] PDF extraction warning: ${e.message}`);
+    }
+
+    // Complementary visual forensics analysis
+    try {
+      const deepResult = await analyzeDocumentDeepForensics(fileBuffer, 'application/pdf');
+      visualForensics = deepResult.visual_forensics;
+      if (!text || text.trim().length < 20) {
+        text = deepResult.raw_text;
+        rawOcrText = deepResult.raw_text;
+        ocrEngineUsed = 'GEMINI_DEEP_FORENSICS';
+      }
+    } catch {}
+  } else if (isImage) {
+    try {
+      const deepResult = await analyzeDocumentDeepForensics(fileBuffer, mimeType);
       text = deepResult.raw_text;
+      rawOcrText = deepResult.raw_text;
+      ocrEngineUsed = 'GEMINI_DEEP_FORENSICS';
       visualForensics = deepResult.visual_forensics;
     } catch {}
 
     if (!text) {
-      if (isPdf) {
-        text = await extractTextFromPdfBuffer(fileBuffer);
-      } else {
-        text = await extractTextFromImageBuffer(fileBuffer, mimeType);
-      }
+      text = await extractTextFromImageBuffer(fileBuffer, mimeType);
+      rawOcrText = text;
+      ocrEngineUsed = 'GEMINI_IMAGE_VISION';
     }
   } else {
     // Plain text / Markdown buffer
     text = fileBuffer.toString('utf-8');
+    rawOcrText = text;
+    ocrEngineUsed = 'BUFFER_UTF8';
   }
 
   if (!text || text.trim().length === 0) {
     text = fileBuffer.toString('utf-8');
+    rawOcrText = text;
+    ocrEngineUsed = 'FALLBACK_RAW';
   }
 
-  const result = extractDocumentSignals(text, filename, mimeType);
+  const result = extractDocumentSignals(text, filename, mimeType, rawOcrText, ocrEngineUsed);
   (result as any).visual_forensics = visualForensics;
   return result;
 }
