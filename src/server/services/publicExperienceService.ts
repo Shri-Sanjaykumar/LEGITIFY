@@ -442,7 +442,7 @@ async function queryPublicWebSearch(
                   retrievedAt: new Date().toISOString(),
                   recency: calculateRecency(new Date(rawDate).toISOString()),
                   matchedEntities: [q.targetEntity],
-                  experienceType: isFraud ? 'INTERNSHIP_SCAM_REPORT' : 'POSITIVE_EXPERIENCE',
+                  experienceType: classifyExperienceType(rawTitle, publisher || ''),
                   relevance: 0.85,
                   specificity: 0.80,
                   evidenceText: rawTitle,
@@ -504,7 +504,7 @@ async function queryPublicWebSearch(
                 retrievedAt: new Date().toISOString(),
                 recency: calculateRecency(new Date(rawDate).toISOString()),
                 matchedEntities: [q.targetEntity],
-                experienceType: isFraud ? 'INTERNSHIP_SCAM_REPORT' : 'POSITIVE_EXPERIENCE',
+                experienceType: classifyExperienceType(rawTitle, publisher || ''),
                 relevance: 0.85,
                 specificity: 0.80,
                 evidenceText: rawTitle,
@@ -566,7 +566,7 @@ async function queryPublicWebSearch(
               retrievedAt: new Date().toISOString(),
               recency: calculateRecency(new Date(rawDate).toISOString()),
               matchedEntities: [q.targetEntity],
-              experienceType: isFraud ? 'INTERNSHIP_SCAM_REPORT' : 'POSITIVE_EXPERIENCE',
+              experienceType: classifyExperienceType(rawTitle, publisher || ''),
               relevance: 0.85,
               specificity: 0.80,
               evidenceText: rawTitle,
@@ -787,33 +787,36 @@ async function queryPositiveCounterEvidence(
 function classifyExperienceType(title: string, body: string): PublicExperienceType {
   const combined = `${title} ${body}`.toLowerCase();
 
-  if (combined.includes('official warning') || combined.includes('caution notice') || combined.includes('fraud advisory')) {
+  if (combined.includes('official warning') || combined.includes('caution notice') || combined.includes('fraud advisory') || combined.includes('advisory')) {
     return 'OFFICIAL_WARNING';
   }
   if (combined.includes('fee') || combined.includes('pay') || combined.includes('deposit') || combined.includes('money') || combined.includes('upi')) {
     if (combined.includes('internship') || combined.includes('intern')) return 'INTERNSHIP_SCAM_REPORT';
     return 'PAYMENT_SCAM_REPORT';
   }
-  if (combined.includes('fake offer') || combined.includes('fraud offer') || combined.includes('bogus letter')) {
+  if (combined.includes('fake offer') || combined.includes('fraud offer') || combined.includes('bogus letter') || combined.includes('fake internship') || combined.includes('scam')) {
     return 'FAKE_OFFER_REPORT';
   }
-  if (combined.includes('impersonat') || combined.includes('lookalike') || combined.includes('spoof')) {
+  if (combined.includes('impersonat') || combined.includes('lookalike') || combined.includes('spoof') || combined.includes('unauthorized domain')) {
     return 'IMPERSONATION_REPORT';
   }
-  if (combined.includes('interview') && (combined.includes('hard') || combined.includes('round') || combined.includes('experience'))) {
+  if (combined.includes('interview') && (combined.includes('hard') || combined.includes('round') || combined.includes('experience') || combined.includes('process') || combined.includes('question'))) {
     return 'INTERVIEW_COMPLAINT';
   }
-  if (combined.includes('salary') || combined.includes('hike') || combined.includes('appraisal')) {
+  if (combined.includes('salary') || combined.includes('stipend') || combined.includes('hike') || combined.includes('appraisal') || combined.includes('delayed pay') || combined.includes('compensation')) {
     return 'SALARY_COMPLAINT';
   }
-  if (combined.includes('work culture') || combined.includes('toxic') || combined.includes('management')) {
+  if (combined.includes('work culture') || combined.includes('toxic') || combined.includes('management') || combined.includes('overwork') || combined.includes('burnout')) {
     return 'WORKPLACE_COMPLAINT';
   }
-  if (combined.includes('great company') || combined.includes('learned a lot') || combined.includes('good internship') || combined.includes('genuine')) {
+  if (combined.includes('complaint') || combined.includes('grievance') || combined.includes('issue') || combined.includes('unresponsive')) {
+    return 'RECRUITMENT_COMPLAINT';
+  }
+  if (combined.includes('great company') || combined.includes('learned a lot') || combined.includes('good internship') || combined.includes('genuine') || combined.includes('excellent') || combined.includes('recommended') || combined.includes('supportive')) {
     return 'POSITIVE_EXPERIENCE';
   }
 
-  return 'RECRUITMENT_COMPLAINT';
+  return 'UNCERTAIN';
 }
 
 function calculateRecency(publishedAt: string | null): 'RECENT' | 'OLDER' | 'HISTORICAL' | 'UNKNOWN_DATE' {
@@ -951,7 +954,7 @@ export async function searchPublicExperiences(params: {
     status: s.experienceType.includes('SCAM') || s.experienceType.includes('WARNING') ? 'NEGATIVE' : s.experienceType.includes('POSITIVE') ? 'VERIFIED' : 'WARNING',
     severity: s.experienceType.includes('SCAM') || s.experienceType.includes('WARNING') ? 'CRITICAL' : 'INFO',
     verified: s.sourceTier === 'TIER_1',
-    confidence: s.relevance * 100,
+    confidence: Math.round(s.relevance <= 1 ? s.relevance * 100 : Math.min(100, s.relevance)),
   }));
 
   return {

@@ -16,6 +16,13 @@ interface ForensicExplanationPanelProps {
   fraudConfidence?: number;
 }
 
+const normalizeConfidence = (val: number | undefined): number => {
+  if (val === undefined || val === null || isNaN(val)) return 85;
+  if (val > 100) return Math.min(100, Math.round(val / 100));
+  if (val <= 1 && val > 0) return Math.round(val * 100);
+  return Math.min(100, Math.max(0, Math.round(val)));
+};
+
 export const ForensicExplanationPanel: React.FC<ForensicExplanationPanelProps> = ({
   explanationSummary,
   fraudPatterns = [],
@@ -34,7 +41,7 @@ export const ForensicExplanationPanel: React.FC<ForensicExplanationPanelProps> =
           <span>🧠</span> Multi-Signal Forensic Reasoning & Pattern Synthesis
         </h3>
         <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00FF87] border border-[#00FF87]/30 font-bold">
-          Fraud Confidence: {fraudConfidence}%
+          Fraud Confidence: {normalizeConfidence(fraudConfidence)}%
         </span>
       </div>
 
@@ -125,7 +132,7 @@ export const ForensicExplanationPanel: React.FC<ForensicExplanationPanelProps> =
                     {fp.patternId}
                   </span>
                   <span className="text-[10px] font-mono text-red-300 font-bold">
-                    Confidence: {Math.round(fp.confidence * 100)}%
+                    Confidence: {normalizeConfidence(fp.confidence)}%
                   </span>
                 </div>
                 <h5 className="text-sm font-bold text-slate-100">{fp.name}</h5>
@@ -140,7 +147,7 @@ export const ForensicExplanationPanel: React.FC<ForensicExplanationPanelProps> =
                     {lp.patternId}
                   </span>
                   <span className="text-[10px] font-mono text-emerald-300 font-bold">
-                    Confidence: {Math.round(lp.confidence * 100)}%
+                    Confidence: {normalizeConfidence(lp.confidence)}%
                   </span>
                 </div>
                 <h5 className="text-sm font-bold text-slate-100">{lp.name}</h5>

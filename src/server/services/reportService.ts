@@ -233,7 +233,7 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
     disclaimer: "LEGITIFY provides an automated evidence-based risk analysis to support applicant decision-making. It is not a legal determination, guarantee of employment legitimacy, or definitive proof of fraudulent intent.",
     // --- InternShield & Extended Visual Dossier Parity ---
     company_name: entityName,
-    confidence_score: scoreResult.trust_score,
+    confidence_score: scoreResult.confidence_score,
     input_type: (documentData?.filename?.toLowerCase().endsWith('.pdf') ? 'pdf' : (entityType || 'text')).toUpperCase(),
     dimension_scores: {
       rules: Math.round((scoreResult.components as any).document?.score ?? 0),
@@ -293,6 +293,8 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
       scoreResult.rules_triggered.some(r => r.rule_id === 'R001' || r.name?.toLowerCase().includes('fee') || r.description?.toLowerCase().includes('fee') || r.explanation?.toLowerCase().includes('fee')) ||
       scoreResult.hard_caps_applied.some(c => c.toLowerCase().includes('fee') || c.toLowerCase().includes('payment'))
     ),
+    evidence: params.evidence || [],
+    extracted_claims: params.documentData?.extracted_claims || [],
   } as any;
 
   return report;

@@ -518,10 +518,16 @@ export function extractDocumentSignals(
   }
 
   const avgRuleSuspicion = ruleCount > 0 ? Math.min(1.0, ruleSuspicion / 5) : 0.0;
-  const ruleConfidence = 1.0 - avgRuleSuspicion;
+  let ruleConfidence = 1.0 - avgRuleSuspicion;
+  if (isFeeDemand) {
+    ruleConfidence = 0.05; // Upfront fee is a catastrophic structural breach
+  }
 
   // --- 5. Final Ensemble Scorer (InternShield Exact Math) ---
   let rawScore = 0.45 * nlpConfidence + 0.35 * ruleConfidence + 0.20 * nerVerification;
+  if (isFeeDemand) {
+    rawScore = Math.min(rawScore, 0.12);
+  }
 
   if (rawScore >= 0.5) {
     const norm = (rawScore - 0.5) * 2;
@@ -544,12 +550,15 @@ export function extractDocumentSignals(
   if (nerVerification < 0.2) rawScore = Math.min(rawScore, 0.55);
 
   let finalPercent = Math.round(rawScore * 100);
-  finalPercent = Math.max(5, Math.min(98, finalPercent));
+  if (isFeeDemand) {
+    finalPercent = Math.min(finalPercent, 12);
+  }
+  finalPercent = Math.max(1, Math.min(98, finalPercent));
 
   let finalVerdict: "LIKELY GENUINE" | "SUSPICIOUS" | "LIKELY FAKE" = "LIKELY GENUINE";
-  if (finalPercent >= 72) finalVerdict = "LIKELY GENUINE";
-  else if (finalPercent >= 40) finalVerdict = "SUSPICIOUS";
-  else finalVerdict = "LIKELY FAKE";
+  if (isFeeDemand || finalPercent < 40) finalVerdict = "LIKELY FAKE";
+  else if (finalPercent < 72) finalVerdict = "SUSPICIOUS";
+  else finalVerdict = "LIKELY GENUINE";
 
   const nextSteps = finalVerdict === "LIKELY FAKE" ? [
     "🚨 Do NOT share any personal documents (Aadhaar, PAN, bank details) with this organization.",
@@ -661,7 +670,6 @@ export function extractDocumentSignals(
   for (const [pattern, _boost, desc] of GENUINE_INDICATORS) {
     if (pattern.test(textLower)) matchedClauses.push(desc);
   }
-
   const normalizedEvidence: NormalizedDocumentEvidence = {
     raw_ocr: rawOcr || text,
     cleaned_text: text,
@@ -676,6 +684,87 @@ export function extractDocumentSignals(
     terms_clauses: matchedClauses,
     ocr_engine: ocrEngine || 'PSZEMRAJ_DOCTR',
   };
+
+  if (isFeeDemand) {
+    evidence.push({
+      id: `EXT-DOC-FEE-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+      category: "FINANCIAL",
+      evidence_type_category: "STRONG_INDICATOR",
+      evidence_type: "UPFRONT_FEE_DEMAND",
+      source_name: "Document Text Forensics",
+      title: "Mandatory Candidate Fee / Caution Deposit Demanded",
+      evidence_text: "Document contains explicit clauses demanding candidate payment, registration fee, training cost, or caution deposit. Standard recruitment laws strictly prohibit candidate fees.",
+      status: "CONTRADICTED",
+      severity: "CRITICAL",
+      verified: true,
+      confidence: 98,
+    });
+  }
+
+  if (emails.length > 0) {
+    const personalFound = emails.filter(e => PERSONAL_EMAIL_DOMAINS.has(e.split('@')[1]?.toLowerCase() || ''));
+    if (personalFound.length > 0) {
+      evidence.push({
+        id: `EXT-DOC-MAIL-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+        category: "RECRUITER",
+        evidence_type_category: "MEDIUM_INDICATOR",
+        evidence_type: "FREE_WEBMAIL_PROVIDER",
+        source_name: "Recruiter Channel Analysis",
+        title: `Public Webmail Channel (${personalFound[0].split('@')[1]})`,
+        evidence_text: `Recruiter communicates from personal webmail service (${personalFound[0]}) rather than official enterprise domain infrastructure.`,
+        status: "SUSPICIOUS",
+        severity: "HIGH",
+        verified: true,
+        confidence: 88,
+      });
+    } else {
+      evidence.push({
+        id: `EXT-DOC-MAIL-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+        category: "RECRUITER",
+        evidence_type_category: "MEDIUM_INDICATOR",
+        evidence_type: "CORPORATE_DOMAIN_EMAIL",
+        source_name: "Recruiter Channel Analysis",
+        title: `Enterprise Sender Domain (${emails[0].split('@')[1]})`,
+        evidence_text: `Recruiter email corresponds to custom corporate domain (${emails[0]}).`,
+        status: "VERIFIED",
+        severity: "INFO",
+        verified: true,
+        confidence: 92,
+      });
+    }
+  }
+
+  if (detectedCompanyName) {
+    evidence.push({
+      id: `EXT-DOC-ENT-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+      category: "ORGANIZATION",
+      evidence_type_category: "MEDIUM_INDICATOR",
+      evidence_type: "OFFER_ENTITY_IDENTIFIER",
+      source_name: "Document Header Analysis",
+      title: `Issuing Organization Named: ${detectedCompanyName}`,
+      evidence_text: `Document text explicitly identifies hiring organization as '${detectedCompanyName}'.`,
+      status: "VERIFIED",
+      severity: "INFO",
+      verified: true,
+      confidence: 90,
+    });
+  }
+
+  if (matchedClauses.length > 0) {
+    evidence.push({
+      id: `EXT-DOC-CLAUSE-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+      category: "DOCUMENT_STRUCTURE",
+      evidence_type_category: "WEAK_INDICATOR",
+      evidence_type: "STANDARD_TERMS_CLAUSES",
+      source_name: "Clause Structure Analyzer",
+      title: `Formal Employment Provisions (${matchedClauses.length} Detected)`,
+      evidence_text: `Document incorporates structured appointment terms: ${matchedClauses.slice(0, 3).join(', ')}.`,
+      status: "VERIFIED",
+      severity: "INFO",
+      verified: true,
+      confidence: 85,
+    });
+  }
 
   return {
     filename,
@@ -717,8 +806,8 @@ export function extractDocumentSignals(
     evidence,
     triggered_flags: flags,
     dimension_scores: {
-      rules: Math.round(ruleConfidence * 100),
-      nlp: Math.round(nlpConfidence * 100),
+      rules: isFeeDemand ? 5 : Math.round(ruleConfidence * 100),
+      nlp: isFeeDemand ? Math.min(10, Math.round(nlpConfidence * 100)) : Math.round(nlpConfidence * 100),
       ner: Math.round(nerVerification * 100),
     },
     final_score: finalPercent,
