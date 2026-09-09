@@ -733,6 +733,22 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     searchCoverage: geminiResult.searchCoverage,
   } : undefined;
 
+  // Enrich Evidence Locker with external sources discovered by Gemini (LinkedIn, Quora, Reddit, Job Boards)
+  if (geminiResult?.sources && geminiResult.sources.length > 0) {
+    for (const src of geminiResult.sources) {
+      evidence.push({
+        id: `${scanId}-EXT-WEB-${src.sourceId || Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+        category: 'COMMUNITY',
+        title: src.title || 'Public Web Search Discovery',
+        evidence_text: src.finding || src.title,
+        status: 'VERIFIED',
+        confidence: 85,
+        source_name: src.publisher || 'Public Web (LinkedIn/Quora/Reddit/Job Platforms)',
+        source_url: src.url,
+      } as any);
+    }
+  }
+
   // Stage 18: Final Trust Score & Confidence Sealing
   const finalFusion = geminiResult ? runEvidenceFusion({
     legitifyResult: legitifyScore,

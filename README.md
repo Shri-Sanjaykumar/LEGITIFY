@@ -43,10 +43,12 @@ Unlike conventional heuristic scanners or generic LLM chatbots that hallucinate 
                                         ▼
     ┌───────────────────────────────────────────────────────────────────────┐
     │                     DOCUMENT DECOMPOSITION PIPELINE                   │
-    ├───────────────────────────────────┬───────────────────────────────────┤
-    │  Hugging Face pszemraj/pdf-ocr    │  Visual Forensics & Layout Engine │
-    │  (Mindee docTR Deep Learning OCR) │  (Signature Mark & Stamp Detection)│
-    └───────────────────────────────────┴───────────────────────────────────┘
+    ├───────────────────────────────────┼───────────────────────────────────┤
+    │  Hugging Face pszemraj/pdf-ocr    │  Hugging Face baidu/Unlimited-OCR │
+    │  (Mindee docTR Deep Learning OCR) │  (End-to-End Image Document OCR)  │
+    ├───────────────────────────────────┴───────────────────────────────────┤
+    │  Visual Forensics & Layout Engine (Signature & Stamp Verification)    │
+    └───────────────────────────────────┬───────────────────────────────────┘
                                         │
                                         ▼
     ┌───────────────────────────────────────────────────────────────────────┐
@@ -202,7 +204,7 @@ LEGITIFY includes an automated semantic assertion guard ([`reportAssertionGuard.
 
 * **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Canvas Confetti
 * **Backend**: Node.js, Express, TypeScript, Multer, Tsx
-* **Deep Learning & OCR**: `pszemraj/pdf-ocr`, `davanstrien/ColPali-Query-Generator` (Hugging Face Spaces)
+* **Deep Learning & OCR**: `pszemraj/pdf-ocr` (docTR), `baidu/Unlimited-OCR`, `davanstrien/ColPali-Query-Generator` (Hugging Face Spaces via Python `gradio_client` bridge)
 * **AI Reasoning**: Google Gemini 2.0 Flash / 1.5 Flash (`@google/genai`)
 * **Database & Auth**: Supabase (PostgreSQL), Google OAuth 2.0
 * **Machine Learning**: Supervised Linear SVM trained on Kaggle Job Scam Dataset

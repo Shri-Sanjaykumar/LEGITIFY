@@ -10,7 +10,7 @@ import path from 'path';
 import os from 'os';
 import { EvidenceItem } from '../../types';
 import { extractTextFromImage, analyzeDocumentDeepForensics } from '../utils/ocr';
-import { extractTextWithPszemrajPdfOcr } from './huggingfaceService';
+import { extractTextWithPszemrajPdfOcr, extractTextWithBaiduUnlimitedOcr } from './huggingfaceService';
 
 const execFileAsync = promisify(execFile);
 
@@ -764,11 +764,24 @@ export async function processDocument(
       }
     } catch {}
   } else if (isImage) {
+    // Tier 1: Hugging Face Deep-Learning baidu/Unlimited-OCR
+    try {
+      const baiduRes = await extractTextWithBaiduUnlimitedOcr(fileBuffer, mimeType);
+      if (baiduRes && baiduRes.text && baiduRes.text.length > 15) {
+        text = baiduRes.text;
+        rawOcrText = baiduRes.raw_ocr;
+        ocrEngineUsed = 'BAIDU_UNLIMITED_OCR';
+      }
+    } catch {}
+
+    // Visual Forensics & Multimodal Gemini Deep Forensics
     try {
       const deepResult = await analyzeDocumentDeepForensics(fileBuffer, mimeType);
-      text = deepResult.raw_text;
-      rawOcrText = deepResult.raw_text;
-      ocrEngineUsed = 'GEMINI_DEEP_FORENSICS';
+      if (!text || text.length < 20) {
+        text = deepResult.raw_text;
+        rawOcrText = deepResult.raw_text;
+        ocrEngineUsed = 'GEMINI_DEEP_FORENSICS';
+      }
       visualForensics = deepResult.visual_forensics;
     } catch {}
 

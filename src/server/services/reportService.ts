@@ -251,6 +251,9 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
       consistency_cross_check: Math.round((scoreResult.components as any).consistency?.score ?? 0),
     },
     components: scoreResult.components as any,
+    rules_triggered: scoreResult.rules_triggered,
+    hard_caps_applied: scoreResult.hard_caps_applied,
+    red_flags: scoreResult.critical_signals.concat(scoreResult.warning_signals),
     triggered_flags: documentData?.triggered_flags || scoreResult.rules_triggered.map(r => ({
       rule: r.rule_id || r.name,
       severity: (r.severity?.toLowerCase() || 'medium') as any,

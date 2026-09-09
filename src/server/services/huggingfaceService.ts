@@ -5,7 +5,18 @@
 // 2. davanstrien/ColPali-Query-Generator (Qwen2.5-VL-7B Multimodal Document Queries)
 // ==============================================================================
 import dotenv from 'dotenv';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { fileURLToPath } from 'url';
+
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const execFileAsync = promisify(execFile);
 
 const HF_TOKEN = process.env.HF_TOKEN || process.env.HUGGINGFACE_TOKEN || '';
 const PDF_OCR_BASE_URL = 'https://pszemraj-pdf-ocr.hf.space';
@@ -43,18 +54,83 @@ export interface PdfOcrResult {
   raw_ocr: string;
   pageCount?: number;
   runtime?: string;
-  engine: 'PSZEMRAJ_DOCTR';
+  engine: 'PSZEMRAJ_DOCTR' | 'BAIDU_UNLIMITED_OCR';
+}
+
+/**
+ * Extracts raw and cleaned text from an image or PDF using baidu/Unlimited-OCR Gradio Space.
+ */
+export async function extractTextWithBaiduUnlimitedOcr(
+  fileBuffer: Buffer,
+  mimeType: string = 'image/png',
+  timeoutMs: number = 30000
+): Promise<PdfOcrResult | null> {
+  const ext = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : mimeType.includes('pdf') ? 'pdf' : 'png';
+  const tempFile = path.join(os.tmpdir(), `legitify_baidu_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
+  try {
+    fs.writeFileSync(tempFile, fileBuffer);
+    const runnerScript = path.resolve(__dirname, '../utils/hf_ocr_runner.py');
+    if (fs.existsSync(runnerScript)) {
+      const { stdout } = await execFileAsync('python', [runnerScript, 'image', tempFile, HF_TOKEN], { timeout: timeoutMs });
+      const lastLine = stdout.trim().split('\n').pop() || '{}';
+      const res = JSON.parse(lastLine);
+      if (res.status === 'SUCCESS' && res.text && res.text.trim().length > 15) {
+        const cleaned = res.text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+        return {
+          text: cleaned,
+          raw_ocr: res.text,
+          runtime: 'baidu/Unlimited-OCR Space',
+          engine: 'BAIDU_UNLIMITED_OCR',
+        };
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[baidu/Unlimited-OCR] Runner notice: ${err.message}`);
+  } finally {
+    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+  }
+  return null;
 }
 
 /**
  * Extracts raw and cleaned text from a PDF Buffer using the pszemraj/pdf-ocr Gradio Space (docTR OCR).
- * Includes timeout guard and error resilience.
+ * Includes python gradio_client runner, timeout guard, and fallback resilience.
  */
 export async function extractTextWithPszemrajPdfOcr(
   pdfBuffer: Buffer,
   filename: string = 'document.pdf',
   timeoutMs: number = 30000
 ): Promise<PdfOcrResult | null> {
+  // Tier 1: Local Python gradio_client Runner for pszemraj/pdf-ocr
+  const tempFile = path.join(os.tmpdir(), `legitify_ocr_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+  try {
+    fs.writeFileSync(tempFile, pdfBuffer);
+    const runnerScript = path.resolve(__dirname, '../utils/hf_ocr_runner.py');
+    if (fs.existsSync(runnerScript)) {
+      try {
+        const { stdout } = await execFileAsync('python', [runnerScript, 'pdf', tempFile, HF_TOKEN], { timeout: timeoutMs });
+        const lastLine = stdout.trim().split('\n').pop() || '{}';
+        const res = JSON.parse(lastLine);
+        if (res.status === 'SUCCESS' && res.text && res.text.trim().length > 15) {
+          const cleanedText = res.text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+          return {
+            text: cleanedText,
+            raw_ocr: res.text,
+            runtime: res.raw_result || 'pszemraj/pdf-ocr (docTR)',
+            engine: (res.engine as any) || 'PSZEMRAJ_DOCTR',
+          };
+        }
+      } catch (e: any) {
+        console.warn(`[pszemraj/pdf-ocr] Python runner exception: ${e.message}`);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[pszemraj/pdf-ocr] Setup notice: ${err.message}`);
+  } finally {
+    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+  }
+
+  // Tier 2: HTTP Gradio API Fallback
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 

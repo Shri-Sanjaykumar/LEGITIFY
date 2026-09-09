@@ -543,18 +543,14 @@ function Header({
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Only actual admins see the preview toggle; regular candidates NEVER see admin controls */}
-        {user?.user_metadata?.role === "admin" && onSwitchRole && (
+        {/* Only admins inside the Admin SOC can toggle preview; regular candidate view has NO admin buttons */}
+        {portalRole === "admin" && user?.user_metadata?.role === "admin" && onSwitchRole && (
           <button
-            onClick={() => onSwitchRole(portalRole === "admin" ? "user" : "admin")}
-            className={`hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-mono font-black border transition-all cursor-pointer shadow-md ${
-              portalRole === "admin"
-                ? "bg-[#00FF87]/15 text-[#00FF87] border-[#00FF87]/40 hover:bg-[#00FF87]/25 hover:border-[#00FF87]"
-                : "bg-[#00F0FF]/15 text-[#00F0FF] border-[#00F0FF]/40 hover:bg-[#00F0FF]/25 hover:border-[#00F0FF]"
-            }`}
-            title={portalRole === "admin" ? "Switch to Student / Candidate Portal" : "Access Security Operations & Admin Mission"}
+            onClick={() => onSwitchRole("user")}
+            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-mono font-black border transition-all cursor-pointer shadow-md bg-[#00FF87]/15 text-[#00FF87] border-[#00FF87]/40 hover:bg-[#00FF87]/25 hover:border-[#00FF87]"
+            title="Preview Candidate Portal"
           >
-            <span>{portalRole === "admin" ? "🎓 Preview Candidate View" : "🛡️ Return to Admin SOC"}</span>
+            <span>🎓 Preview Candidate View</span>
           </button>
         )}
 
@@ -1002,6 +998,16 @@ function UserReportView({
           rule: r.rule_id
         }));
 
+  const hasFeeDemand = Boolean(
+    report.has_fee_demand ||
+    (report as any).hasPaymentDemand ||
+    report.document_analysis?.extracted_entities?.payment_demands?.length ||
+    report.rules_triggered?.some(r => r.rule_id === 'R001' || r.name?.toLowerCase().includes('fee') || r.description?.toLowerCase().includes('fee') || r.explanation?.toLowerCase().includes('fee')) ||
+    report.red_flags?.some((f: any) => typeof f === 'string' ? f.toLowerCase().includes('money') || f.toLowerCase().includes('payment') || f.toLowerCase().includes('fee') : f.message?.toLowerCase().includes('money') || f.message?.toLowerCase().includes('payment') || f.message?.toLowerCase().includes('fee')) ||
+    (report.triggered_flags || []).some((f: any) => f.message?.toLowerCase().includes('money') || f.message?.toLowerCase().includes('payment') || f.message?.toLowerCase().includes('fee')) ||
+    report.hard_caps_applied?.some(c => c.toLowerCase().includes('fee') || c.toLowerCase().includes('payment'))
+  );
+
   return (
     <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 bg-[#060709] max-w-5xl mx-auto font-['Plus_Jakarta_Sans',sans-serif]">
       {/* Top Header Dossier */}
@@ -1146,7 +1152,7 @@ function UserReportView({
           </span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {report.has_fee_demand ? (
+          {hasFeeDemand ? (
             <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-base">🚨</span>
@@ -1243,10 +1249,10 @@ function UserReportView({
           <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838]">
             <span className="text-[11px] font-mono text-slate-400 uppercase">Signatory Identity</span>
             <p className="text-sm font-bold text-slate-100 mt-1">
-              {report.signatory_forensics?.signatory_name || report.document_analysis?.visual_forensics?.signatory_name || "Authorized HR Representative"}
+              {report.signatory_forensics?.signatory_name || report.document_analysis?.visual_forensics?.signatory_name || (report.signatory_forensics?.signature_detected ? "Signature Observed (Name Unstated)" : "Not Stated in Document")}
             </p>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              {report.signatory_forensics?.signatory_title || report.document_analysis?.visual_forensics?.signatory_title || "Official Placement Authority"}
+              {report.signatory_forensics?.signatory_title || report.document_analysis?.visual_forensics?.signatory_title || (report.signatory_forensics?.signature_detected ? "Signatory Block Present" : "No Signatory Listed")}
             </p>
           </div>
 
@@ -1295,7 +1301,7 @@ function UserReportView({
 
           {/* Card 2: Financial Safety & Fee Demand */}
           <div className={`p-6 rounded-3xl border-2 space-y-2.5 shadow-xl ${
-            report.has_fee_demand
+            hasFeeDemand
               ? "bg-red-500/10 border-red-500/40"
               : "bg-[#0D1117] border-[#1E2838]"
           }`}>
@@ -1305,15 +1311,15 @@ function UserReportView({
                 <span className="text-base font-black text-slate-100">Financial & Fee Safety</span>
               </div>
               <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold ${
-                report.has_fee_demand
+                hasFeeDemand
                   ? "bg-red-500/20 text-[#FF3B5C] border border-red-500/50"
                   : "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
               }`}>
-                {report.has_fee_demand ? "🚨 PAYMENT DEMAND DETECTED" : "✅ ZERO-FEE COMPLIANT"}
+                {hasFeeDemand ? "🚨 PAYMENT DEMAND DETECTED" : "✅ ZERO-FEE COMPLIANT"}
               </span>
             </div>
             <p className="text-xs text-slate-300 font-medium leading-relaxed">
-              {report.has_fee_demand
+              {hasFeeDemand
                 ? "Candidate registration fee or caution deposit requested. Legitimate employers NEVER ask applicants for payment."
                 : "No candidate fees, caution deposits, or monetary requirements detected."}
             </p>
