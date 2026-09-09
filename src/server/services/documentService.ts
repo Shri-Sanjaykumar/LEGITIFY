@@ -127,8 +127,12 @@ const GENUINE_INDICATORS: [RegExp, number, string, boolean][] = [
 
 // --- FRAUD INDICATORS (InternShield) ---
 const FRAUD_INDICATORS: [RegExp, number, string][] = [
-  [/(pay|deposit|transfer|send)\s*(rs\.?|₹|inr|money|amount|fee)/i, 0.18, "Requests money/payment from candidate"],
+  [/(?<!basic\s+|gross\s+|net\s+)(?:pay|deposit|transfer|send)\s*(?:rs\.?|₹|inr|money|amount|fee)/i, 0.18, "Requests money/payment from candidate"],
   [/(registration\s+fee|processing\s+fee|security\s+deposit)/i, 0.20, "Demands registration/processing fee"],
+  [/(internship\s*fees?|enrolment\s*fees?)/i, 0.20, "Demands candidate internship/enrolment fee"],
+  [/(?:required|need)\s+to\s+pay\s+(?:online|the\s+internship|through|before|to\s+confirm)/i, 0.20, "Mandates candidate payment for enrolment/onboarding"],
+  [/pay\s+(?:₹|rs\.?|inr)?\s*[0-9,]+(?:\s*\/-)?\s*(?:online|through|for\s+internship|to\s+confirm)/i, 0.20, "Specifies mandatory fee amount for candidate enrolment"],
+  [/to\s+confirm\s+your\s+(?:enrolment|selection|seat).*?pay/i, 0.20, "Conditions offer confirmation on candidate fee payment"],
   [/(training\s+fee|kit\s+charge|laptop\s+deposit)/i, 0.15, "Charges for training/equipment"],
   [/(refundable\s+(deposit|amount|fee))/i, 0.15, "Mentions 'refundable deposit' — common scam tactic"],
   [/(pay\s+before\s+joining|advance\s+payment)/i, 0.18, "Demands payment before joining"],
@@ -302,10 +306,24 @@ export function extractDocumentSignals(
     detectedCompanyName = prefixMatch[1].trim();
   }
 
-  // Pattern B: Legal entity markers (e.g. Acme Corp Ltd, Tech Solutions Private Limited)
+  // Pattern B: Legal entity markers (e.g. Acme Corp Ltd, Tech Solutions Private Limited, Clinchsoft Technologies)
   if (!detectedCompanyName) {
-    const legalMatch = text.match(/\b([A-Z][A-Za-z0-9\s&.,'-]{2,45}\s+(?:Private\s+Limited|Pvt\s+Ltd|Limited|LLP|LLC|Corporation|Corp|Inc|GmbH))\b/i);
+    const legalMatch = text.match(/\b([A-Z][A-Za-z0-9 &.,'-]{1,45}\s+(?:Private\s+Limited|Pvt\s+Ltd|Limited|LLP|LLC|Corporation|Corp|Inc|GmbH|Technologies|Solutions|Enterprises|Infotech|Services|Global|Consultancy))\b/i);
     if (legalMatch) detectedCompanyName = legalMatch[1].trim();
+  }
+
+  // Pattern C: Internship / employment program at company
+  if (!detectedCompanyName) {
+    const programMatch = text.match(/(?:Internship\s+Program\s+(?:at|with)|employment\s+with|position\s+at)\s+([A-Z0-9][A-Za-z0-9&.,' -]{2,45})/i);
+    if (programMatch) detectedCompanyName = programMatch[1].trim().replace(/,\s*commencing.*$/i, '');
+  }
+
+  // Pattern D: Formal sign-off entity (Yours truly Clinchsoft Technologies)
+  if (!detectedCompanyName) {
+    const signoffMatch = text.match(/(?:Yours\s+(?:truly|faithfully|sincerely)|Warm\s+regards|Regards)[,\s\n]+([A-Z][A-Za-z0-9&.,' -]{2,45})/i);
+    if (signoffMatch && !/(?:hr|manager|director|team|candidate)/i.test(signoffMatch[1])) {
+      detectedCompanyName = signoffMatch[1].trim();
+    }
   }
 
   if (!detectedCompanyName) {
@@ -317,6 +335,10 @@ export function extractDocumentSignals(
         break;
       }
     }
+  }
+
+  if (detectedCompanyName) {
+    detectedCompanyName = detectedCompanyName.replace(/^(?:the\s+upcoming\s+)?(?:internship\s+program\s+(?:at|with)|employment\s+with|position\s+at)\s+/i, '').trim();
   }
 
   // --- 2. NLP Classification (InternShield Exact Algorithm) ---
@@ -466,16 +488,22 @@ export function extractDocumentSignals(
   }
 
   // Payment demands
-  const feeTriggerRegex = /(?:registration\s*fee|training\s*(?:fee|cost|charge)|security\s*deposit|laptop\s*deposit|caution\s*deposit|mandatory\s*(?:fee|payment|deposit|charge)|pay\s*(?:mandatory|immediately|before\s*joining|to\s*join|security\s*deposit|registration|via\s*upi)|application\s*fee|onboarding\s*fee|document\s*verification\s*charge|id\s*card\s*fee|uniform\s*deposit|processing\s*fee|deposit\s*(?:of\s*)?(?:₹|rs\.?|inr|\$)\s*[0-9,]+)/gi;
-  const isFeeDemand = (feeTriggerRegex.test(text) || upiMatches.length > 0) && !hasFeeNegation;
+  const feeTriggerRegex = /(?:registration\s*fees?|training\s*(?:fees?|cost|charge)|security\s*deposit|laptop\s*deposit|caution\s*deposit|mandatory\s*(?:fees?|payment|deposit|charge)|internship\s*fees?|enrolment\s*fees?|application\s*fees?|onboarding\s*fees?|document\s*verification\s*charge|id\s*card\s*fees?|uniform\s*deposit|processing\s*fees?|required\s+to\s+pay|need\s+to\s+pay|pay\s+(?:mandatory|immediately|before\s*joining|to\s*join|security\s*deposit|registration|via\s*upi|online|the\s+internship)|pay\s+(?:₹|rs\.?|inr)?\s*[0-9,]+|deposit\s*(?:of\s*)?(?:₹|rs\.?|inr|\$)\s*[0-9,]+|to\s+confirm\s+your\s+enrolment[^\n]*?pay)/gi;
+  const hasPaymentFlagTriggered = flags.some(f =>
+    (f.rule === "nlp_classifier" || f.rule === "payment_demand") &&
+    (f.message.toLowerCase().includes("money") || f.message.toLowerCase().includes("payment") || f.message.toLowerCase().includes("fee") || f.message.toLowerCase().includes("deposit"))
+  );
+  const isFeeDemand = (feeTriggerRegex.test(text) || upiMatches.length > 0 || hasPaymentFlagTriggered) && !hasFeeNegation;
   if (isFeeDemand) {
     ruleSuspicion += 1.0; ruleCount++;
-    flags.push({
-      rule: "payment_demand",
-      severity: "critical",
-      message: "Letter asks candidate to pay money / registration fee / security deposit. Legitimate employers NEVER charge candidates.",
-      score: 1.0,
-    });
+    if (!flags.some(f => f.rule === "payment_demand")) {
+      flags.push({
+        rule: "payment_demand",
+        severity: "critical",
+        message: "Letter asks candidate to pay money / registration fee / security deposit. Legitimate employers NEVER charge candidates.",
+        score: 1.0,
+      });
+    }
   }
 
   // Urgency

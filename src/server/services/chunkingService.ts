@@ -214,13 +214,13 @@ const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const PHONE_REGEX = /(?:\+91|0)?[6-9]\d{9}|\(\d{3}\)\s*\d{3}-\d{4}/g;
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^\[\]`]+/g;
 const UPI_REGEX = /[a-zA-Z0-9._%+-]+@(?:paytm|phonepe|ybl|okhdfcbank|okaxis|okicici|oksbi|upi|apl|ibl|kotak)/gi;
-const AMOUNT_REGEX = /(?:rs\.?|inr|₹|usd|\$)\s*[\d,]+(?:\.\d{1,2})?|[\d,]+(?:\.\d{1,2})?\s*(?:rs\.?|inr|₹)/gi;
+const AMOUNT_REGEX = /(?:rs\.?|inr|₹|usd|\$)\s*[\d,]+(?:\.\d{1,2})?|[\d,]+(?:\.\d{1,2})?\s*(?:rs\.?|inr|₹|\/-)/gi;
 const DATE_REGEX = /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{4}/gi;
 const CIN_REGEX = /[UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}/gi;
 const DOMAIN_REGEX = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|in|org|net|gov|edu|co\.in|io|tech)\b/gi;
 
 const PAYMENT_NEGATION_PATTERNS = [
-  /no\s+(?:registration|application|processing|training|onboarding|security)\s+fee/i,
+  /no\s+(?:registration|application|processing|training|onboarding|security|internship)?\s*fee/i,
   /(?:never|do\s+not|will\s+not|shall\s+not)\s+(?:charge|collect|demand|request|ask\s+for)\s+(?:any\s+)?(?:[\w-]+\s+)?(?:fee|money|payment|deposit)/i,
   /free\s+of\s+(?:any\s+)?(?:charge|cost|fee)/i,
   /(?:no\s+)?(?:fee|payment)\s+(?:is\s+)?(?:not\s+required|is\s+not\s+required|not\s+applicable|is\s+waived|required\s+from)/i,
@@ -230,11 +230,13 @@ const PAYMENT_NEGATION_PATTERNS = [
 ];
 
 const PAYMENT_REQUEST_PATTERNS = [
-  /(?:pay|transfer|deposit|remit|purchase|buy)\s+(?:(?:the|a|for|towards|worth)\s+)?(?:training\s+kit|laptop|uniform)?.*?(?:rs\.?|inr|₹)?\s*[\d,]+/i,
-  /(?:registration|processing|training|onboarding|security|laptop|uniform|id\s+card|kit)\s+fee/i,
+  /(?:pay|transfer|deposit|remit|purchase|buy)\s+(?:(?:the|a|for|towards|worth)\s+)?(?:training\s+kit|laptop|uniform)?[\s\S]*?(?:rs\.?|inr|₹)?\s*[\d,]+(?:\/-)?/i,
+  /(?:registration|processing|training|onboarding|security|laptop|uniform|id\s+card|kit|internship|enrolment)\s+fees?/i,
   /(?:training\s+kit|security\s+deposit|laptop\s+deposit)/i,
-  /(?:fee|deposit|charge|payment)\s+(?:of|is|required|must\s+be|should\s+be)/i,
+  /(?:fee|fees|deposit|charge|payment)\s+(?:of|is|required|must\s+be|should\s+be|online)/i,
   /(?:upi|bank\s+transfer|neft|imps|rtgs)\s+(?:payment|transfer)/i,
+  /(?:required|need)\s+to\s+pay/i,
+  /to\s+confirm\s+your\s+(?:enrolment|selection|seat).*?pay/i,
 ];
 
 export function analyzeChunk(chunk: DocumentChunk): ChunkFindings {

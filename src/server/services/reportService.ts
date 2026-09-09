@@ -283,6 +283,13 @@ export function compileFullReport(params: CompileReportParams): LegitifyReport {
     dual_rag_citations: params.dualRAGCitations,
     signatory_forensics: params.signatoryForensics,
     pipeline_trace: params.pipelineTrace,
+    has_fee_demand: Boolean(
+      documentData?.has_fee_demand ||
+      params.fraudPatterns?.hasPaymentDemand ||
+      (params as any).hasPaymentDemand ||
+      scoreResult.rules_triggered.some(r => r.rule_id === 'R001' || r.name?.toLowerCase().includes('fee') || r.description?.toLowerCase().includes('fee') || r.explanation?.toLowerCase().includes('fee')) ||
+      scoreResult.hard_caps_applied.some(c => c.toLowerCase().includes('fee') || c.toLowerCase().includes('payment'))
+    ),
   } as any;
 
   return report;

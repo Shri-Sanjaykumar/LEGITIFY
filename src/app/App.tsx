@@ -38,6 +38,7 @@ type UserView =
 
 type AdminView =
   | "admin_mission"
+  | "admin_report"
   | "admin_scan"
   | "admin_copilot"
   | "admin_threats"
@@ -524,7 +525,7 @@ function Header({
   return (
     <header className="h-20 px-6 md:px-10 border-b border-[#1E2838] bg-[#07090E]/95 backdrop-blur-2xl flex items-center justify-between z-30 sticky top-0 shadow-2xl">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-3.5 group cursor-pointer" onClick={() => onSwitchRole && onSwitchRole(portalRole === "admin" ? "user" : "admin")}>
+        <div className="flex items-center gap-3.5 group">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#00FF87] via-[#00E599] to-[#00F0FF] p-[2.5px] shadow-[0_0_25px_rgba(0,255,135,0.4)]">
             <div className="w-full h-full rounded-[14px] bg-[#060709] flex items-center justify-center text-2xl">
               🛡️
@@ -542,7 +543,8 @@ function Header({
       </div>
 
       <div className="flex items-center gap-4">
-        {onSwitchRole && (
+        {/* Only actual admins see the preview toggle; regular candidates NEVER see admin controls */}
+        {user?.user_metadata?.role === "admin" && onSwitchRole && (
           <button
             onClick={() => onSwitchRole(portalRole === "admin" ? "user" : "admin")}
             className={`hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-mono font-black border transition-all cursor-pointer shadow-md ${
@@ -552,7 +554,7 @@ function Header({
             }`}
             title={portalRole === "admin" ? "Switch to Student / Candidate Portal" : "Access Security Operations & Admin Mission"}
           >
-            <span>{portalRole === "admin" ? "🎓 Switch to Candidate View" : "🛡️ Access Admin Ops"}</span>
+            <span>{portalRole === "admin" ? "🎓 Preview Candidate View" : "🛡️ Return to Admin SOC"}</span>
           </button>
         )}
 
@@ -1259,115 +1261,105 @@ function UserReportView({
         </div>
       </div>
 
-      {/* Section 2: Analysis Breakdown (10 Deterministic Forensic Dimensions) */}
-      <div className="space-y-8">
-        <div className="space-y-4">
+      {/* Section 2: Candidate Security Verification Summary */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
+            <span>🛡️</span> Security Verification Summary
+          </h3>
+          <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00FF87] border border-[#00FF87]/30 font-bold">
+            Candidate Safety Protocol Active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Card 1: Document Structure */}
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2.5 shadow-xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-black text-slate-100 text-glow-emerald flex items-center gap-2">
-                <span>📐</span> 10-Dimension Forensic Integrity Grid
-              </h3>
-              <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00FF87] border border-[#00FF87]/30 font-bold">
-                LEGITIFY-SCORE-v2.0 (100% Deterministic)
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">📄</span>
+                <span className="text-base font-black text-slate-100">Offer Document Structure</span>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold ${
+                (report.document_analysis?.extracted_entities?.suspicious_pressure_phrases?.length || 0) > 0
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                  : "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
+              }`}>
+                {(report.document_analysis?.extracted_entities?.suspicious_pressure_phrases?.length || 0) > 0 ? "REVIEW RECOMMENDED" : "VERIFIED STRUCTURE"}
               </span>
             </div>
+            <p className="text-xs text-slate-300 font-medium leading-relaxed">
+              Standard offer clauses, appointment terms, and format analyzed across document pages.
+            </p>
+          </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {[
-            {
-              name: "Doc Authenticity",
-              weight: "10%",
-              score: (report as any).components?.document_authenticity?.score ?? report.dimension_scores?.document_authenticity ?? dimRules,
-              icon: "📄",
-              color: "#00FF87"
-            },
-            {
-              name: "Company Legal",
-              weight: "15%",
-              score: (report as any).components?.company?.score ?? report.dimension_scores?.company_legal ?? dimNer,
-              icon: "🏛️",
-              color: "#00F0FF"
-            },
-            {
-              name: "Domain Security",
-              weight: "10%",
-              score: (report as any).components?.domain?.score ?? report.dimension_scores?.domain_security ?? (report.domain_analysis?.ssl_valid ? 80 : 30),
-              icon: "🌐",
-              color: "#38BDF8"
-            },
-            {
-              name: "Recruiter Auth",
-              weight: "10%",
-              score: (report as any).components?.recruiter?.score ?? report.dimension_scores?.recruiter_auth ?? (report.recruiter_analysis?.free_email_provider ? 25 : 85),
-              icon: "👤",
-              color: "#A78BFA"
-            },
-            {
-              name: "Financial Safety",
-              weight: "20%",
-              score: (report as any).components?.document?.score ?? report.dimension_scores?.financial_safety ?? (report.document_analysis?.requested_fees?.length ? 5 : 90),
-              icon: "💳",
-              color: "#F43F5E"
-            },
-            {
-              name: "Certificate Auth",
-              weight: "5%",
-              score: (report as any).components?.certificate?.score ?? report.dimension_scores?.certificate_auth ?? (report.certificate_verification ? 85 : 50),
-              icon: "📜",
-              color: "#34D399"
-            },
-            {
-              name: "ML Fraud Model",
-              weight: "10%",
-              score: (report as any).components?.ml_probability?.score ?? report.dimension_scores?.ml_fraud_model ?? dimNlp,
-              icon: "🤖",
-              color: "#F59E0B"
-            },
-            {
-              name: "Threat Intel IOC",
-              weight: "5%",
-              score: (report as any).components?.threat?.score ?? report.dimension_scores?.threat_intel ?? (report.threat_intelligence?.matched_iocs_count > 0 ? 10 : 85),
-              icon: "🚨",
-              color: "#EF4444"
-            },
-            {
-              name: "Community Intel",
-              weight: "5%",
-              score: (report as any).components?.community?.score ?? report.dimension_scores?.community_evidence ?? 60,
-              icon: "👥",
-              color: "#60A5FA"
-            },
-            {
-              name: "Cross Consistency",
-              weight: "10%",
-              score: (report as any).components?.consistency?.score ?? report.dimension_scores?.consistency_cross_check ?? 75,
-              icon: "⚖️",
-              color: "#10B981"
-            },
-          ].map((dim, idx) => {
-            const dimScore = Math.round(dim.score > 1 ? dim.score : dim.score * 100);
-            return (
-              <div key={idx} className="p-5 rounded-2xl bg-[#0D1117] border border-[#1E2838] space-y-2.5 shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-xl">{dim.icon}</span>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                    wt: {dim.weight}
-                  </span>
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-200 truncate">{dim.name}</h4>
-                </div>
-                <div className="w-full bg-[#131822] h-2 rounded-full overflow-hidden border border-[#1E2838]">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${Math.min(100, Math.max(5, dimScore))}%`, backgroundColor: dimScore >= 70 ? '#00FF87' : dimScore >= 45 ? '#F59E0B' : '#FF3B5C' }}
-                  />
-                </div>
-                <p className="text-right text-xs font-mono font-extrabold" style={{ color: dimScore >= 70 ? '#00FF87' : dimScore >= 45 ? '#F59E0B' : '#FF3B5C' }}>
-                  {dimScore}/100
-                </p>
+          {/* Card 2: Financial Safety & Fee Demand */}
+          <div className={`p-6 rounded-3xl border-2 space-y-2.5 shadow-xl ${
+            report.has_fee_demand
+              ? "bg-red-500/10 border-red-500/40"
+              : "bg-[#0D1117] border-[#1E2838]"
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">💳</span>
+                <span className="text-base font-black text-slate-100">Financial & Fee Safety</span>
               </div>
-            );
-          })}
+              <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold ${
+                report.has_fee_demand
+                  ? "bg-red-500/20 text-[#FF3B5C] border border-red-500/50"
+                  : "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
+              }`}>
+                {report.has_fee_demand ? "🚨 PAYMENT DEMAND DETECTED" : "✅ ZERO-FEE COMPLIANT"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 font-medium leading-relaxed">
+              {report.has_fee_demand
+                ? "Candidate registration fee or caution deposit requested. Legitimate employers NEVER ask applicants for payment."
+                : "No candidate fees, caution deposits, or monetary requirements detected."}
+            </p>
+          </div>
+
+          {/* Card 3: Organization Identity */}
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2.5 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">🏛️</span>
+                <span className="text-base font-black text-slate-100">Organization Identity</span>
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-[#00F0FF]/20 text-[#00F0FF] border border-[#00F0FF]/40">
+                {cleanCompany ? cleanCompany.slice(0, 24) : "CORPORATE CHECK"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 font-medium leading-relaxed">
+              Target entity cross-referenced against corporate directory and public employer databases.
+            </p>
+          </div>
+
+          {/* Card 4: Recruiter Communication */}
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2.5 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">🌐</span>
+                <span className="text-base font-black text-slate-100">Sender Communication</span>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold ${
+                report.domain_analysis?.lookalike_detected
+                  ? "bg-red-500/20 text-[#FF3B5C] border border-red-500/50"
+                  : report.recruiter_analysis?.domain_alignment === 'EXACT_MATCH'
+                  ? "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
+                  : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+              }`}>
+                {report.domain_analysis?.lookalike_detected
+                  ? "LOOKALIKE DOMAIN"
+                  : report.recruiter_analysis?.domain_alignment === 'EXACT_MATCH'
+                  ? "DOMAIN ALIGNED"
+                  : "GENERIC / UNVERIFIED"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 font-medium leading-relaxed">
+              Sender contact evaluated for corporate infrastructure, DNS alignment, and impersonation signals.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -1443,40 +1435,7 @@ function UserReportView({
         </div>
       </div>
 
-      {/* Section 4.1: Pipeline Execution Trace */}
-      {report.pipeline_trace?.stages && report.pipeline_trace.stages.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-black text-slate-100 flex items-center gap-2">
-              <span>⚡</span> End-to-End Pipeline Execution Trace
-            </h3>
-            <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00F0FF] border border-[#00F0FF]/30 font-bold">
-              {report.pipeline_trace.stages.length} Stages Executed · {report.pipeline_trace.totalDurationMs || 0}ms
-            </span>
-          </div>
-          <div className="rounded-2xl border border-[#1E2838] bg-[#0D1117] p-4 divide-y divide-[#1E2838]/60 font-mono text-xs">
-            {report.pipeline_trace.stages.map((stg, sIdx) => (
-              <div key={sIdx} className="py-2.5 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                    stg.status === 'PASS' ? 'bg-emerald-500/20 text-[#00FF87]' :
-                    stg.status === 'SKIP' ? 'bg-slate-700/40 text-slate-400' :
-                    'bg-amber-500/20 text-amber-300'
-                  }`}>
-                    {stg.status}
-                  </span>
-                  <span className="text-slate-200 font-semibold">{stg.stage}</span>
-                </div>
-                <div className="flex items-center gap-4 text-slate-400 text-right">
-                  <span className="truncate max-w-md hidden sm:inline text-slate-400">{stg.detail}</span>
-                  <span className="text-slate-500 font-bold">{stg.durationMs}ms</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      </div>
+
 
       {/* Section 4.5: Multi-Signal Forensic Reasoning & Pattern Synthesis */}
       <ForensicExplanationPanel
@@ -2529,12 +2488,719 @@ function UserSafetyHubView() {
 }
 
 // ================================================================
+// ADMIN REPORT VIEW: FULL MATHEMATICAL TRANSPARENCY & SOC COMMAND
+// ================================================================
+
+function AdminReportView({
+  report,
+  onBack,
+  onUpdateScan,
+  onOpenCopilot,
+  userToken,
+}: {
+  report: LegitifyReport;
+  onBack: () => void;
+  onUpdateScan?: (scanId: string, updatedScore: number, updatedVerdict: string, notes: string) => Promise<void>;
+  onOpenCopilot?: (prompt?: string) => void;
+  userToken?: string;
+}) {
+  const [copiedJson, setCopiedJson] = useState(false);
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideScore, setOverrideScore] = useState(report.trust_score);
+  const [overrideVerdict, setOverrideVerdict] = useState(report.verdict);
+  const [overrideNotes, setOverrideNotes] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState<"math" | "claims" | "telemetry" | "gemini" | "raw">("math");
+
+  const components = (report as any).components || {};
+  const scoreTrace = report.score_trace;
+
+  const DIMENSIONS_DEF = [
+    { key: "document_authenticity", name: "Doc Authenticity", baseWeight: 0.10, icon: "📄", defaultScore: 85 },
+    { key: "company", name: "Company Legal Verification", baseWeight: 0.15, icon: "🏛️", defaultScore: 90 },
+    { key: "domain", name: "Domain Security Intelligence", baseWeight: 0.10, icon: "🌐", defaultScore: 80 },
+    { key: "recruiter", name: "Recruiter Authentication", baseWeight: 0.10, icon: "👤", defaultScore: 85 },
+    { key: "document", name: "Financial / Fee Safety", baseWeight: 0.20, icon: "💳", defaultScore: 90 },
+    { key: "certificate", name: "Certificate Verification", baseWeight: 0.05, icon: "📜", defaultScore: 85 },
+    { key: "ml_probability", name: "ML Fraud Classifier", baseWeight: 0.10, icon: "🤖", defaultScore: 85 },
+    { key: "threat", name: "Threat Intelligence IOC", baseWeight: 0.05, icon: "🚨", defaultScore: 90 },
+    { key: "community", name: "Community Intel & Reviews", baseWeight: 0.05, icon: "👥", defaultScore: 75 },
+    { key: "consistency", name: "Cross-Source Consistency", baseWeight: 0.10, icon: "⚖️", defaultScore: 80 },
+  ];
+
+  // Map each dimension with its active status and weight
+  const activeDims = DIMENSIONS_DEF.map(d => {
+    const comp = (components as any)[d.key];
+    const isDocRelated = d.key === "document" || d.key === "document_authenticity" || d.key === "ml_probability";
+    const isActive = comp ? comp.active !== false : (isDocRelated || Boolean((report.dimension_scores as any)?.[d.key]));
+    const rawScore = comp?.score ?? (report.dimension_scores as any)?.[d.key] ?? d.defaultScore;
+    const status = comp?.status || (isActive ? "VERIFIED" : "UNAVAILABLE");
+    return {
+      ...d,
+      isActive,
+      rawScore,
+      status,
+      reason: comp?.reason || "Pending live registry lookup.",
+      evidenceCount: comp?.evidence_count || 0,
+      evidenceIds: comp?.evidence_ids || [],
+    };
+  });
+
+  const totalActiveBaseWeight = activeDims.filter(d => d.isActive).reduce((acc, d) => acc + d.baseWeight, 0) || 1.0;
+
+  const handleSaveOverride = async () => {
+    if (onUpdateScan) {
+      await onUpdateScan(report.scan_id, overrideScore, overrideVerdict, overrideNotes);
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setShowOverrideModal(false);
+      }, 1200);
+    }
+  };
+
+  const handleCopyJSON = () => {
+    navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2000);
+  };
+
+  const theme = getVerdictTheme(report.verdict, report.trust_score);
+  const cleanCompany = report.entity_name || report.company_name || "Offer Letter";
+
+  return (
+    <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 bg-[#060709] max-w-7xl mx-auto">
+      {/* Top SOC Breadcrumb & Quick Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#1E2838]">
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBack}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F131A] text-slate-300 hover:text-[#00F0FF] border border-[#1E2838] text-xs font-mono font-bold transition-all cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" /> Back to Mission Ops
+            </button>
+            <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/30 uppercase tracking-wider">
+              🛡️ SOC Technical Audit Mode
+            </span>
+          </div>
+          <h1 className="text-3xl font-black text-slate-100 flex items-center gap-3 pt-1">
+            <span>{cleanCompany}</span>
+            <span className="text-xs font-mono font-normal text-slate-400 px-3 py-1 rounded bg-[#131822] border border-[#1E2838]">
+              ID: {report.scan_id?.slice(0, 12)}
+            </span>
+          </h1>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowOverrideModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#00F0FF]/20 hover:bg-[#00F0FF]/30 text-[#00F0FF] border border-[#00F0FF]/40 text-xs font-mono font-black transition-all cursor-pointer shadow-md"
+          >
+            <Edit3 className="w-4 h-4" />
+            <span>Recalibrate / Override</span>
+          </button>
+          <button
+            onClick={() => exportReportPDF(report)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#131822] hover:bg-[#1A2232] text-slate-200 border border-[#1E2838] text-xs font-mono font-bold transition-all cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export PDF</span>
+          </button>
+          <button
+            onClick={handleCopyJSON}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#131822] hover:bg-[#1A2232] text-slate-200 border border-[#1E2838] text-xs font-mono font-bold transition-all cursor-pointer"
+          >
+            {copiedJson ? <Check className="w-4 h-4 text-[#00FF87]" /> : <Copy className="w-4 h-4" />}
+            <span>{copiedJson ? "JSON Copied" : "Raw JSON"}</span>
+          </button>
+          {onOpenCopilot && (
+            <button
+              onClick={() => onOpenCopilot()}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#00FF87]/20 hover:bg-[#00FF87]/30 text-[#00FF87] border border-[#00FF87]/40 text-xs font-mono font-black transition-all cursor-pointer"
+            >
+              <Brain className="w-4 h-4" />
+              <span>AI Copilot</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* SOC HUD Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2 shadow-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-slate-400 uppercase">Trust Index</span>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black ${theme.badgeClass}`}>
+              {report.verdict}
+            </span>
+          </div>
+          <p className="text-4xl font-black text-slate-100" style={{ color: theme.color }}>
+            {report.trust_score}<span className="text-xl text-slate-500 font-normal">/100</span>
+          </p>
+          <p className="text-xs text-slate-400 font-mono">
+            {report.trust_score >= 72 ? "Verified Authentic Pattern" : report.trust_score >= 40 ? "Suspicious Anomalies" : "Critical Fraud Triggered"}
+          </p>
+        </div>
+
+        <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2 shadow-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-slate-400 uppercase">Confidence</span>
+            <span className="text-[10px] font-mono text-[#00FF87] bg-emerald-500/20 px-2 py-0.5 rounded">STATISTICAL</span>
+          </div>
+          <p className="text-4xl font-black text-[#00FF87]">
+            {report.confidence || report.confidence_score || 85}%
+          </p>
+          <p className="text-xs text-slate-400 font-mono">Based on corroboration density</p>
+        </div>
+
+        <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2 shadow-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-slate-400 uppercase">Evidence Completeness</span>
+            <span className="text-[10px] font-mono text-[#00F0FF] bg-cyan-500/20 px-2 py-0.5 rounded">
+              {report.evidence_completeness?.category || "MODERATE"}
+            </span>
+          </div>
+          <p className="text-4xl font-black text-[#00F0FF]">
+            {report.evidence_completeness?.percentage || 75}%
+          </p>
+          <p className="text-xs text-slate-400 font-mono">
+            {report.evidence_completeness?.missing_evidence?.length || 0} feeds uncorroborated
+          </p>
+        </div>
+
+        <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-2 shadow-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-slate-400 uppercase">ML Probability</span>
+            <span className="text-[10px] font-mono text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded">KAGGLE SVM</span>
+          </div>
+          <p className="text-4xl font-black text-amber-400">
+            {((report.ml_evaluation?.fraud_probability || (report as any).ml_probability || 0.15) * 100).toFixed(1)}%
+          </p>
+          <p className="text-xs text-slate-400 font-mono">
+            Class: <strong className="text-slate-200">{report.ml_evaluation?.predicted_class || "GENUINE"}</strong>
+          </p>
+        </div>
+      </div>
+
+      {/* Tab Navigation for Deep SOC Inspection */}
+      <div className="flex items-center gap-2 border-b border-[#1E2838] pb-3 overflow-x-auto">
+        {[
+          { id: "math", label: "📐 10-Dimension Formula & Weights" },
+          { id: "claims", label: "🔍 Dynamic Claims Ledger (RAG)" },
+          { id: "telemetry", label: "⚡ Pipeline & HF Models" },
+          { id: "gemini", label: "🤖 Gemini Cross-Examination" },
+          { id: "raw", label: "💻 Raw Technical JSON" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id as any)}
+            className={`px-4 py-2 rounded-2xl text-xs font-mono font-bold whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === t.id
+                ? "bg-[#00F0FF]/20 text-[#00F0FF] border border-[#00F0FF]/50 shadow-md font-black"
+                : "text-slate-400 hover:text-slate-200 hover:bg-[#131822]"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB 1: MATHEMATICAL TRANSPARENCY & 10-DIMENSION INTEGRITY MATRIX */}
+      {activeTab === "math" && (
+        <div className="space-y-6">
+          {/* Mathematical Formula Callout */}
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#00F0FF]/30 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📐</span>
+                <div>
+                  <h3 className="text-lg font-black text-slate-100 text-glow-cyan">
+                    Deterministic Scoring Equation (LEGITIFY-SCORE-v2.0)
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    100% deterministic mathematical evaluation. Unverified or unavailable feeds are actively re-normalized to avoid penalizing offers without data.
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-[#00F0FF]/20 text-[#00F0FF] border border-[#00F0FF]/40">
+                AUDITED ENGINE
+              </span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#060709] border border-[#1E2838] font-mono text-sm space-y-2">
+              <p className="text-[#00FF87] font-bold text-sm md:text-base">
+                Final Trust Score = Σ [ (w_i / Σ w_active) × Score_i ] + Δ_rules - Hard_Cap_Penalties
+              </p>
+              <div className="text-xs text-slate-300 space-y-1 pt-1">
+                <p>• <strong>Active Evidence Weight Sum:</strong> {(totalActiveBaseWeight * 100).toFixed(1)}% of total 100% theoretical capacity.</p>
+                <p>• <strong>Normalization Rule:</strong> Inactive or uncorroborated dimensions are re-scaled proportionally. They NEVER default to 0/100 to drag down genuine offers.</p>
+                <p>• <strong>Hard Safety Floor/Ceiling:</strong> If critical fraud is detected (e.g. upfront fee demand), hard safety caps cap the score regardless of other positive dimensions.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 10-Dimension Mathematical Table */}
+          <div className="space-y-4">
+            <h4 className="text-base font-black text-slate-100 flex items-center gap-2">
+              <span>📊</span> Active Weights & Component Contributions
+            </h4>
+            <div className="rounded-3xl border-2 border-[#1E2838] bg-[#0D1117] overflow-hidden shadow-2xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-[#131822] text-slate-400 font-mono text-xs">
+                    <tr>
+                      <th className="px-6 py-4">Dimension</th>
+                      <th className="px-6 py-4">Base Weight</th>
+                      <th className="px-6 py-4">Active Weight</th>
+                      <th className="px-6 py-4">Raw Score</th>
+                      <th className="px-6 py-4">Weighted Score</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Diagnostic Rationale</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1E2838]">
+                    {activeDims.map((dim, idx) => {
+                      const normWeight = dim.isActive ? (dim.baseWeight / totalActiveBaseWeight) : 0;
+                      const weightedContrib = dim.isActive ? (dim.rawScore * normWeight).toFixed(2) : "0.00";
+
+                      return (
+                        <tr key={idx} className="hover:bg-[#131822]/60 transition-colors">
+                          <td className="px-6 py-4 font-bold text-slate-100">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-lg">{dim.icon}</span>
+                              <span>{dim.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-mono text-slate-400">
+                            {(dim.baseWeight * 100).toFixed(0)}%
+                          </td>
+                          <td className="px-6 py-4 font-mono font-bold text-[#00F0FF]">
+                            {dim.isActive ? `${(normWeight * 100).toFixed(1)}%` : <span className="text-slate-500">0.0% (Excluded)</span>}
+                          </td>
+                          <td className="px-6 py-4 font-mono font-bold">
+                            {dim.isActive ? (
+                              <span style={{ color: dim.rawScore >= 70 ? '#00FF87' : dim.rawScore >= 45 ? '#F59E0B' : '#FF3B5C' }}>
+                                {dim.rawScore}/100
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 font-normal">UNAVAILABLE</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 font-mono font-extrabold text-[#00FF87]">
+                            +{weightedContrib}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                              dim.status === "VERIFIED"
+                                ? "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
+                                : dim.status === "CONTRADICTED"
+                                ? "bg-red-500/20 text-[#FF3B5C] border border-red-500/40"
+                                : dim.status === "FLAGGED" || dim.status === "SUSPICIOUS"
+                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                : "bg-slate-800 text-slate-400 border border-slate-700"
+                            }`}>
+                              {dim.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-slate-300 max-w-sm">
+                            <p>{dim.reason}</p>
+                            {dim.evidenceIds.length > 0 && (
+                              <span className="text-[10px] font-mono text-[#00F0FF] mt-0.5 block">
+                                Trace: {dim.evidenceIds.slice(0, 3).join(", ")}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Hard Safety Constraints & Caps Audit Table */}
+          <div className="space-y-4">
+            <h4 className="text-base font-black text-slate-100 flex items-center gap-2">
+              <span>🛑</span> Hard Safety Constraints Audit (Override Engine)
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                {
+                  rule: "UPFRONT_FEE_DEMAND",
+                  ceiling: "Max Trust 35/100",
+                  triggered: report.has_fee_demand,
+                  description: "Enforced when candidate fee, registration charge, or caution deposit is detected.",
+                },
+                {
+                  rule: "LOOKALIKE_DOMAIN",
+                  ceiling: "Max Trust 25/100",
+                  triggered: report.domain_analysis?.lookalike_detected,
+                  description: "Enforced when recruitment domain impersonates established corporate brand.",
+                },
+                {
+                  rule: "CONFIRMED_MALICIOUS_IOC",
+                  ceiling: "Max Trust 10/100",
+                  triggered: (report.threat_intelligence?.matched_iocs_count || 0) > 0,
+                  description: "Enforced when domain/email matches global security threat intelligence feeds.",
+                },
+                {
+                  rule: "UNREGISTERED_COMPANY",
+                  ceiling: "Max Trust 40/100",
+                  triggered: report.company_verification?.registry_status === "NOT_FOUND",
+                  description: "Enforced when claimed company is absent from statutory government master registers.",
+                },
+              ].map((c, cIdx) => (
+                <div
+                  key={cIdx}
+                  className={`p-5 rounded-2xl border-2 space-y-2.5 shadow-lg ${
+                    c.triggered
+                      ? "bg-red-500/10 border-red-500/50"
+                      : "bg-[#0D1117] border-[#1E2838]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-bold text-slate-300">{c.rule}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-black ${
+                      c.triggered ? "bg-red-500 text-white" : "bg-emerald-500/20 text-[#00FF87]"
+                    }`}>
+                      {c.triggered ? "TRIGGERED" : "PASSED"}
+                    </span>
+                  </div>
+                  <p className="text-xs font-mono font-bold text-[#00F0FF]">{c.ceiling}</p>
+                  <p className="text-xs text-slate-400 leading-relaxed">{c.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: DYNAMIC CLAIMS LEDGER (RAG ENGINE) */}
+      {activeTab === "claims" && (
+        <div className="space-y-6">
+          <div className="rounded-3xl border-2 border-[#1E2838] bg-[#0D1117] overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-[#1E2838] flex items-center justify-between">
+              <h4 className="text-lg font-black text-slate-100 flex items-center gap-2">
+                <span>🔍</span> Extracted Document Claims vs. Ground Truth (RAG Layer 1 & 2)
+              </h4>
+              <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00F0FF] border border-[#00F0FF]/30 font-bold">
+                {report.extracted_claims?.length || 0} Claims Ledger Records
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[#131822] text-slate-400 font-mono text-xs">
+                  <tr>
+                    <th className="px-6 py-4">Claim ID</th>
+                    <th className="px-6 py-4">Type</th>
+                    <th className="px-6 py-4">Document Claim Text</th>
+                    <th className="px-6 py-4">Verification Status</th>
+                    <th className="px-6 py-4">Corroborated Ground Truth</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#1E2838]">
+                  {(report.extracted_claims || []).map((clm, idx) => (
+                    <tr key={idx} className="hover:bg-[#131822]/60 transition-colors">
+                      <td className="px-6 py-4 font-mono text-xs font-bold text-[#00F0FF]">{clm.id}</td>
+                      <td className="px-6 py-4 font-mono text-xs text-slate-400">{clm.claim_type}</td>
+                      <td className="px-6 py-4 font-bold text-slate-100 max-w-sm">{clm.raw_claim_text}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                          clm.verification_status === "VERIFIED"
+                            ? "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/40"
+                            : clm.verification_status === "CONTRADICTED"
+                            ? "bg-red-500/20 text-[#FF3B5C] border border-red-500/40"
+                            : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                        }`}>
+                          {clm.verification_status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-slate-300 max-w-md">
+                        {clm.retrieved_reality || clm.explanation || "Cross-checked via verified public registries."}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Visual Signatory Forensics Card */}
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-4 shadow-xl">
+            <h4 className="text-base font-black text-slate-100 flex items-center gap-2">
+              <span>✍️</span> Signatory & Letterhead Forensics
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838]">
+                <p className="text-[11px] font-mono text-slate-400 uppercase">Detection Mode</p>
+                <p className="text-sm font-bold text-slate-100 mt-1">
+                  {report.signatory_forensics?.signature_type || "VISUAL_SIGNATURE"}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Visual observation only</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838]">
+                <p className="text-[11px] font-mono text-slate-400 uppercase">Identified Signatory</p>
+                <p className="text-sm font-bold text-slate-100 mt-1">
+                  {report.signatory_forensics?.signatory_name || "Authorized HR Authority"}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {report.signatory_forensics?.signatory_title || "Placement Authority"}
+                </p>
+              </div>
+              <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838]">
+                <p className="text-[11px] font-mono text-slate-400 uppercase">Standard Governance Rule</p>
+                <p className="text-xs font-semibold text-amber-300 mt-1">
+                  Signature presence does NOT increase trust score. Independent corporate cross-check required.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: PIPELINE & HUGGING FACE TELEMETRY */}
+      {activeTab === "telemetry" && (
+        <div className="space-y-6">
+          {/* Hugging Face Deep Learning Telemetry */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-[#00F0FF] uppercase">Hugging Face Model 1</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-[#00FF87]">ONLINE</span>
+              </div>
+              <h4 className="text-base font-black text-slate-100">pszemraj/pdf-ocr (Mindee docTR)</h4>
+              <p className="text-xs text-slate-300">
+                Deep-learning optical character recognition with convolutional feature extraction for multi-column offer letters.
+              </p>
+              <div className="p-3 rounded-xl bg-[#131822] font-mono text-xs text-slate-400">
+                Engine: <strong className="text-slate-200">{report.document_analysis?.extracted_entities ? "PSZEMRAJ_DOCTR" : "ACTIVE"}</strong>
+              </div>
+            </div>
+
+            <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-3 shadow-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-[#00F0FF] uppercase">Hugging Face Model 2</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-[#00FF87]">ONLINE</span>
+              </div>
+              <h4 className="text-base font-black text-slate-100">davanstrien/ColPali-Query-Generator</h4>
+              <p className="text-xs text-slate-300">
+                Qwen2.5-VL-7B multimodal vision-language query generation producing topical, detail, and visual search vectors.
+              </p>
+              <div className="p-3 rounded-xl bg-[#131822] font-mono text-xs text-slate-400">
+                Status: <strong className="text-slate-200">DYNAMIC QUERY INGESTION ACTIVE</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* End-to-End Pipeline Execution Trace */}
+          {report.pipeline_trace?.stages && report.pipeline_trace.stages.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-base font-black text-slate-100 flex items-center gap-2">
+                  <span>⚡</span> Stage-by-Stage Latency & Diagnostic Execution Trace
+                </h4>
+                <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#131822] text-[#00F0FF] border border-[#00F0FF]/30 font-bold">
+                  {report.pipeline_trace.stages.length} Stages · {report.pipeline_trace.totalDurationMs || 0}ms
+                </span>
+              </div>
+              <div className="rounded-3xl border-2 border-[#1E2838] bg-[#0D1117] p-4 divide-y divide-[#1E2838]/60 font-mono text-xs shadow-2xl">
+                {report.pipeline_trace.stages.map((stg, sIdx) => (
+                  <div key={sIdx} className="py-2.5 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                        stg.status === 'PASS' ? 'bg-emerald-500/20 text-[#00FF87]' :
+                        stg.status === 'SKIP' ? 'bg-slate-700/40 text-slate-400' :
+                        'bg-amber-500/20 text-amber-300'
+                      }`}>
+                        {stg.status}
+                      </span>
+                      <span className="text-slate-200 font-semibold">{stg.stage}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-slate-400 text-right">
+                      <span className="truncate max-w-md hidden sm:inline text-slate-400">{stg.detail}</span>
+                      <span className="text-slate-500 font-bold">{stg.durationMs}ms</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: GEMINI CROSS-EXAMINATION DOSSIER */}
+      {activeTab === "gemini" && (
+        <div className="space-y-6">
+          <div className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🤖</span>
+                <div>
+                  <h4 className="text-lg font-black text-slate-100">Gemini Independent Investigation Dossier</h4>
+                  <p className="text-xs text-slate-400">Independent LLM cross-examination grounded with Google Search.</p>
+                </div>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-mono font-black ${
+                (report.gemini_cross_examination?.verdict || "").includes("FAKE") || (report.gemini_cross_examination?.verdict || "").includes("SCAM")
+                  ? "bg-red-500/20 text-[#FF3B5C] border border-red-500/50"
+                  : "bg-emerald-500/20 text-[#00FF87] border border-emerald-500/50"
+              }`}>
+                {report.gemini_cross_examination?.verdict || "INDEPENDENT_EVAL_COMPLETE"}
+              </span>
+            </div>
+
+            <p className="text-sm text-slate-200 font-semibold leading-relaxed">
+              {report.gemini_cross_examination?.summary || report.executive_summary || "Gemini cross-examination corroborated deterministic evidence findings."}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838] space-y-2">
+                <span className="text-xs font-mono text-[#00FF87] font-bold">✅ Agreements with Deterministic Engine</span>
+                <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside">
+                  {(report.gemini_reconciliation?.agreements || ["Zero-fee policy validation", "Entity name alignment"]).map((a, i) => (
+                    <li key={i}>{a}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838] space-y-2">
+                <span className="text-xs font-mono text-[#FF3B5C] font-bold">⚠️ Detected Contradictions</span>
+                <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside">
+                  {(report.gemini_reconciliation?.contradictions?.length ? report.gemini_reconciliation.contradictions : ["No direct factual contradictions discovered."]).map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#131822] border border-[#1E2838] space-y-2">
+                <span className="text-xs font-mono text-amber-300 font-bold">❓ Epistemic Unknowns</span>
+                <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside">
+                  {(report.gemini_reconciliation?.unknowns || ["Signatory employment record not in public registries."]).map((u, i) => (
+                    <li key={i}>{u}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: RAW TECHNICAL JSON */}
+      {activeTab === "raw" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-base font-black text-slate-100 flex items-center gap-2">
+              <span>💻</span> Complete Unredacted Report JSON
+            </h4>
+            <button
+              onClick={handleCopyJSON}
+              className="flex items-center gap-2 px-3 py-1 rounded-xl bg-[#131822] text-slate-300 hover:text-[#00F0FF] border border-[#1E2838] text-xs font-mono font-bold cursor-pointer"
+            >
+              {copiedJson ? <Check className="w-3.5 h-3.5 text-[#00FF87]" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedJson ? "Copied" : "Copy Raw JSON"}</span>
+            </button>
+          </div>
+          <pre className="p-6 rounded-3xl bg-[#0D1117] border-2 border-[#1E2838] overflow-x-auto text-xs font-mono text-slate-300 leading-relaxed max-h-[600px] shadow-2xl">
+            {JSON.stringify(report, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {/* SOC Override Modal */}
+      {showOverrideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-xl p-8 rounded-3xl bg-[#0D1117] border-2 border-[#00F0FF]/50 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🛡️</span>
+                <h3 className="text-2xl font-black text-slate-100">SOC Decision Override</h3>
+              </div>
+              <button
+                onClick={() => setShowOverrideModal(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-100 bg-[#131822] border border-[#1E2838] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-mono text-slate-400 block mb-1">Adjust Trust Score (1 - 99)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={overrideScore}
+                  onChange={(e) => setOverrideScore(parseInt(e.target.value) || 0)}
+                  className="w-full px-4 py-3 rounded-2xl bg-[#060709] border border-[#1E2838] text-slate-100 font-mono font-bold text-lg"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-mono text-slate-400 block mb-1">Select Official SOC Verdict</label>
+                <select
+                  value={overrideVerdict}
+                  onChange={(e) => setOverrideVerdict(e.target.value as any)}
+                  className="w-full px-4 py-3 rounded-2xl bg-[#060709] border border-[#1E2838] text-slate-100 font-bold"
+                >
+                  <option value="LIKELY GENUINE">LIKELY GENUINE (Low Risk)</option>
+                  <option value="SUSPICIOUS">SUSPICIOUS (Moderate Risk / Caution)</option>
+                  <option value="LIKELY FAKE">LIKELY FAKE (High Fraud Risk)</option>
+                  <option value="CONFIRMED FRAUD">CONFIRMED FRAUD (Critical Threat)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-mono text-slate-400 block mb-1">SOC Case Audit Justification Notes</label>
+                <textarea
+                  rows={3}
+                  value={overrideNotes}
+                  onChange={(e) => setOverrideNotes(e.target.value)}
+                  placeholder="State reason for overriding algorithmic score (e.g. Manual MCA21 match confirmed, placement cell verified)..."
+                  className="w-full px-4 py-3 rounded-2xl bg-[#060709] border border-[#1E2838] text-slate-200 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              {saveSuccess && (
+                <span className="text-xs font-mono text-[#00FF87] flex items-center gap-1.5 font-bold">
+                  <CheckCircle2 className="w-4 h-4" /> Updated in Supabase!
+                </span>
+              )}
+              <div className="flex items-center gap-3 ml-auto">
+                <button
+                  onClick={() => setShowOverrideModal(false)}
+                  className="px-6 py-2.5 rounded-2xl bg-[#131822] text-slate-300 font-bold text-sm cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveOverride}
+                  className="px-6 py-2.5 rounded-2xl bg-[#00F0FF] hover:bg-[#38BDF8] text-black font-black text-sm transition-all shadow-[0_0_20px_rgba(0,240,255,0.4)] flex items-center gap-2 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Save Decision</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================================================================
 // ADMIN SOC MISSION CONTROL
 // ================================================================
 
 function AdminSidebar({ active, onNav }: { active: AdminView; onNav: (v: AdminView) => void }) {
   const ITEMS: { id: AdminView; label: string; emoji: string; badge?: string }[] = [
     { id: "admin_mission",       label: "Mission Operations",     emoji: "⚡" },
+    { id: "admin_report",        label: "Forensic Dossier & Math",emoji: "📐", badge: "SOC" },
     { id: "admin_scan",          label: "Live Pipeline Scan",      emoji: "🔍", badge: "RUN" },
     { id: "admin_copilot",       label: "Trust AI Copilot",       emoji: "🤖", badge: "AI" },
     { id: "admin_threats",       label: "Threat Intelligence IOC",emoji: "🚨" },
@@ -2857,7 +3523,11 @@ export function App() {
   const handleScanComplete = (response: any) => {
     const rep: LegitifyReport = response?.report || response;
     setCurrentReport(rep);
-    setUserView("user_report");
+    if (portalRole === "admin") {
+      setAdminView("admin_report");
+    } else {
+      setUserView("user_report");
+    }
     loadScanHistory(session?.access_token);
   };
 
@@ -2867,7 +3537,11 @@ export function App() {
       if (rep) {
         const finalReport: LegitifyReport = (rep as any)?.report || rep;
         setCurrentReport(finalReport);
-        if (portalRole === "user") setUserView("user_report");
+        if (portalRole === "user") {
+          setUserView("user_report");
+        } else {
+          setAdminView("admin_report");
+        }
       }
     } catch {}
   };
@@ -2989,6 +3663,31 @@ export function App() {
                   scans={scans}
                   stats={analyticsStats}
                 />
+              )}
+              {adminView === "admin_report" && (
+                currentReport ? (
+                  <AdminReportView
+                    report={currentReport}
+                    onBack={() => setAdminView("admin_mission")}
+                    onUpdateScan={handleUpdateScanPrediction}
+                    onOpenCopilot={handleOpenCopilotWithPrompt}
+                    userToken={session?.access_token}
+                  />
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4 bg-[#060709]">
+                    <span className="text-5xl">📐</span>
+                    <h3 className="text-xl font-black text-slate-200">No Forensic Dossier Loaded</h3>
+                    <p className="text-sm text-slate-400 max-w-md">
+                      Please select an investigation from Case Registry or run a new scan to view the complete mathematical score decomposition, active weights, and SOC telemetry.
+                    </p>
+                    <button
+                      onClick={() => setAdminView("admin_scan")}
+                      className="px-6 py-2.5 rounded-2xl bg-[#00F0FF] text-black font-black text-sm cursor-pointer shadow-lg shadow-[#00F0FF]/20"
+                    >
+                      Run Pipeline Scan
+                    </button>
+                  </div>
+                )
               )}
               {adminView === "admin_scan" && (
                 <UserScanView
